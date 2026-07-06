@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}LUKA · Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Revisión completa de tu economía</p>
+  </div>
+  <!-- Date filters: HTMX updates stats, charts, and transactions -->
+  <form class="filter-form"
+        hx-get="/partials/stats"
+        hx-target="#stats-section"
+        hx-swap="innerHTML"
+        hx-include="[name='date_from'],[name='date_to']"
+        hx-trigger="change"
+        id="filter-form">
+    <div class="filter-group">
+      <label for="date_from">Desde</label>
+      <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
+             hx-get="/partials/stats" hx-target="#stats-section" hx-swap="innerHTML"
+             hx-include="[name='date_from'],[name='date_to']"
+             hx-trigger="change"
+             hx-on::after-request="updateCharts(event)" />
+    </div>
+    <div class="filter-group">
+      <label for="date_to">Hasta</label>
+      <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
+             hx-get="/partials/stats" hx-target="#stats-section" hx-swap="innerHTML"
+             hx-include="[name='date_from'],[name='date_to']"
+             hx-trigger="change"
+             hx-on::after-request="updateCharts(event)" />
+    </div>
+    <a href="/export/csv?date_from={{ date_from }}&date_to={{ date_to }}"
+       class="btn-export" id="btn-export-csv">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Exportar
+    </a>
+  </form>
+</div>
+
+<!-- ── Stats Cards ── -->
+<section id="stats-section">
+  {% include "partials/stats.html" %}
+</section>
+
+<!-- ── Charts ── -->
+<section class="charts-grid" id="charts-section">
+  {% include "partials/charts.html" %}
+</section>
+
+<!-- ── Budget Bars ── -->
+{% if budgets %}
+<section class="section-card" id="budgets-section">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+      <circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>
+    </svg>
+    Presupuestos
+  </h2>
+  <div class="budgets-list">
+    {% for b in budgets %}
+    <div class="budget-item">
+      <div class="budget-header">
+        <div class="budget-name">
+          <span class="cat-dot" style="background:{{ b.color }}"></span>
+          {{ b.category }}
+        </div>
+        <div class="budget-amounts">
+          <span class="budget-spent {% if b.over %}over-budget{% endif %}">${{ "%.0f"|format(b.spent) }}</span>
+          <span class="budget-limit"> / ${{ "%.0f"|format(b.limit) }}</span>
+        </div>
+      </div>
+      <div class="budget-bar-bg">
+        <div class="budget-bar-fill {% if b.over %}bar-over{% endif %}"
+             style="width: {{ b.pct }}%; background: {{ b.color }};"
+             role="progressbar" aria-valuenow="{{ b.pct }}" aria-valuemin="0" aria-valuemax="100">
+        </div>
+      </div>
+      <div class="budget-meta">
+        <span>{{ b.pct }}% utilizado</span>
+        {% if b.over %}
+        <span class="over-label">⚠ Excedido ${{ "%.0f"|format(b.spent - b.limit) }}</span>
+        {% else %}
+        <span>Disponible: ${{ "%.0f"|format(b.remaining) }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<!-- ── Recent Transactions ── -->
+<section class="section-card" id="transactions-section">
+  <h2 class="section-title">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+    Últimas transacciones
+  </h2>
+  <div id="transactions-list">
+    {% include "partials/transactions.html" %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Serialize current chart data from Jinja into JS
+const initialCategoryData = {{ by_category_json|safe }};
+const initialDayData      = {{ by_day_json|safe }};
+
+let pieChart, lineChart;
+
+function buildCharts(categoryData, dayData) {
+  // Doughnut — expenses by category
+  const pieCtx = document.getElementById('chart-pie');
+  if (!pieCtx) return;
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(pieCtx, {
+    type: 'doughnut',
+    data: {
+      labels: categoryData.map(d => d.category),
+      datasets: [{
+        data: categoryData.map(d => d.total),
+        backgroundColor: categoryData.map(d => d.color),
+        borderWidth: 0,
+        hoverOffset: 10,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '72%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 }, padding: 16 }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` $${ctx.parsed.toLocaleString('es-AR', {minimumFractionDigits: 2})}`
+          }
+        }
+      }
+    }
+  });
+
+  // Line — spending over time
+  const lineCtx = document.getElementById('chart-line');
+  if (!lineCtx) return;
+  if (lineChart) lineChart.destroy();
+  lineChart = new Chart(lineCtx, {
+    type: 'line',
+    data: {
+      labels: dayData.map(d => d.day),
+      datasets: [{
+        label: 'Gastos diarios',
+        data: dayData.map(d => d.total),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.10)',
+        borderWidth: 2.5,
+        pointBackgroundColor: '#6366f1',
+        pointRadius: 4,
+        pointHoverRadius: 7,
+        fill: true,
+        tension: 0.4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` $${ctx.parsed.y.toLocaleString('es-AR', {minimumFractionDigits: 2})}`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, callback: v => `$${v.toLocaleString()}` }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+}
+
+// Initial render
+document.addEventListener('DOMContentLoaded', () => buildCharts(initialCategoryData, initialDayData));
+
+// Refresh charts after HTMX filter update
+async function updateCharts() {
+  const from = document.getElementById('date_from')?.value || '';
+  const to   = document.getElementById('date_to')?.value || '';
+  const res = await fetch(`/partials/charts?date_from=${from}&date_to=${to}`);
+  const html = await res.text();
+  document.getElementById('charts-section').innerHTML = html;
+
+  // Re-read JSON embedded in the partial
+  const catMatch = html.match(/id="chart-category-data"[^>]*data-json='([^']+)'/);
+  const dayMatch = html.match(/id="chart-day-data"[^>]*data-json='([^']+)'/);
+  if (catMatch && dayMatch) {
+    buildCharts(JSON.parse(catMatch[1]), JSON.parse(dayMatch[1]));
+  }
+
+  // Also refresh transactions
+  const txRes = await fetch(`/partials/transactions?date_from=${from}&date_to=${to}`);
+  document.getElementById('transactions-list').innerHTML = await txRes.text();
+}
+</script>
+{% endblock %}
