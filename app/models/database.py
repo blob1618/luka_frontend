@@ -1,10 +1,10 @@
 import os
+import uuid
 from datetime import datetime
-from decimal import Decimal
 
 from dotenv import load_dotenv
 from sqlalchemy import (
-    Column, Integer, String, Numeric, DateTime, ForeignKey, create_engine
+    Column, Integer, String, Float, Numeric, DateTime, Date, Boolean, ForeignKey, create_engine, Uuid
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -35,39 +35,80 @@ def get_db():
         db.close()
 
 
-class User(Base):
-    __tablename__ = "users"
+class Usuario(Base):
+    __tablename__ = "usuarios"
 
     id = Column(Integer, primary_key=True, index=True)
     whatsapp_id = Column(String, unique=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    creado_en = Column(DateTime, default=datetime.utcnow)
 
 
-class Expense(Base):
-    __tablename__ = "expenses"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    amount = Column(Numeric(10, 2), nullable=False)
-    category = Column(String, nullable=False)
-    description = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class Budget(Base):
-    __tablename__ = "budgets"
+class Gasto(Base):
+    __tablename__ = "gastos"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    category = Column(String, nullable=False)
-    limit_amount = Column(Numeric(10, 2), nullable=False)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    monto = Column(Float, nullable=False)
+    categoria = Column(String, nullable=False)
+    descripcion = Column(String, nullable=True)
+    creado_en = Column(DateTime, default=datetime.utcnow)
 
 
-class Reminder(Base):
-    __tablename__ = "reminders"
+class Presupuesto(Base):
+    __tablename__ = "presupuestos"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    title = Column(String, nullable=False)
-    due_date = Column(DateTime, nullable=False)
-    is_active = Column(Integer, default=1)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    categoria = Column(String, nullable=False)
+    monto_limite = Column(Float, nullable=False)
+
+
+class Recordatorio(Base):
+    __tablename__ = "recordatorios"
+
+    id = Column(Integer, primary_key=True, index=True)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"))
+    titulo = Column(String, nullable=False)
+    fecha_vencimiento = Column(DateTime, nullable=False)
+    activo = Column(Integer, default=1)
+
+
+class Categoria(Base):
+    __tablename__ = "categorias"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid, nullable=False)
+    nombre = Column(String, nullable=False)
+    creada_en = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class LimiteGasto(Base):
+    __tablename__ = "limites_gasto"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid, nullable=False)
+    categoria_id = Column(Uuid, ForeignKey("categorias.id"))
+    monto_maximo = Column(Numeric(10, 2), nullable=False)
+    periodo_inicio = Column(Date, nullable=False)
+    periodo_fin = Column(Date, nullable=False)
+    creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class VersionConsentimiento(Base):
+    __tablename__ = "versiones_consentimiento"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    version = Column(String, nullable=False)
+    contenido = Column(String, nullable=False)
+    fecha_publicacion = Column(DateTime(timezone=True), default=datetime.utcnow)
+    es_activa = Column(Boolean, default=False)
+
+
+class ConsentimientoUsuario(Base):
+    __tablename__ = "consentimientos_usuario"
+
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4)
+    usuario_id = Column(Uuid, nullable=False)
+    version_id = Column(Uuid, ForeignKey("versiones_consentimiento.id"))
+    aceptado = Column(Boolean, default=False)
+    fecha_aceptacion = Column(DateTime(timezone=True), default=datetime.utcnow)
