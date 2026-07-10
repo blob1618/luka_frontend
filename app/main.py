@@ -7,7 +7,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,7 +23,7 @@ from app.dashboard import (
     get_budgets_with_usage,
     get_expenses_by_category,
     get_expenses_by_day,
-    get_or_create_user,
+    get_user,
     get_recent_transactions,
     get_summary_stats,
 )
@@ -34,11 +34,7 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup (no-op if they already exist)
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception as e:
-        print(f"⚠️  DB init warning: {e}")
+    # Ya no creamos tablas desde el frontend, se gestionan en el backend
     yield
 
 
@@ -117,7 +113,9 @@ async def dashboard(
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
-    user = get_or_create_user(db, whatsapp_id)
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
 
@@ -154,7 +152,9 @@ async def partial_stats(
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
-    user = get_or_create_user(db, whatsapp_id)
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     stats = get_summary_stats(db, user.id, _parse_date(date_from), _parse_date(date_to))
     return templates.TemplateResponse("partials/stats.html", {
         "request": request,
@@ -170,7 +170,9 @@ async def partial_charts(
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
-    user = get_or_create_user(db, whatsapp_id)
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from, d_to = _parse_date(date_from), _parse_date(date_to)
     by_category = get_expenses_by_category(db, user.id, d_from, d_to)
     by_day = get_expenses_by_day(db, user.id, d_from, d_to)
@@ -189,7 +191,9 @@ async def partial_transactions(
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
-    user = get_or_create_user(db, whatsapp_id)
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     transactions = get_recent_transactions(
         db, user.id,
         date_from=_parse_date(date_from),
@@ -212,7 +216,9 @@ async def export_csv(
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
-    user = get_or_create_user(db, whatsapp_id)
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
     transactions = get_recent_transactions(
         db, user.id, limit=10_000,
         date_from=_parse_date(date_from),
