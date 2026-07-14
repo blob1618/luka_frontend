@@ -23,7 +23,6 @@
       <label for="date_to">Hasta</label>
       <input type="date" id="date_to" name="date_to" value="{{ date_to }}" />
     </div>
-
   </form>
 </div>
 
@@ -97,10 +96,18 @@
 
 <!-- ── Recent Transactions ── -->
 <section class="section-card" id="transactions-section">
-  <h2 class="section-title">
-    {% include 'components/icons/icon_portfolio.svg' %}
-    Últimas transacciones
-  </h2>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h2 class="section-title" style="margin-bottom: 0;">
+      {% include 'components/icons/icon_portfolio.svg' %}
+      Últimas transacciones
+    </h2>
+    <button type="button" class="btn-export" onclick="exportCSV()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      Exportar
+    </button>
+  </div>
   <div id="transactions-list">
     {% include "partials/transactions.html" %}
   </div>
@@ -313,5 +320,11 @@ document.body.addEventListener('actualizarGraficos', async function() {
   const txRes = await fetch(`/partials/transactions?date_from=${from}&date_to=${to}`);
   document.getElementById('transactions-list').innerHTML = await txRes.text();
 });
+
+function exportCSV() {
+  const from = document.getElementById('date_from')?.value || '';
+  const to   = document.getElementById('date_to')?.value   || '';
+  window.location.href = `/exportar/csv?date_from=${from}&date_to=${to}`;
+}
 </script>
 {% endblock %}

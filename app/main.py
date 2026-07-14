@@ -1,10 +1,12 @@
+import csv
+import io
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -27,7 +29,7 @@ from app.dashboard import (
     get_recent_transactions,
     get_summary_stats,
 )
-from app.models.database import get_db
+from app.models.database import get_db, MovimientoFinanciero, Categoria
 
 load_dotenv()
 
@@ -159,6 +161,68 @@ async def dashboard(
             "dias_racha": dias_racha,
         },
     )
+
+
+@app.get("/exportar/csv")
+async def exportar_csv(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    whatsapp_id: str = Depends(get_current_user),
+):
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
+
+    def iter_csv():
+        q = (
+            db.query(MovimientoFinanciero, Categoria)
+            .join(
+                Categoria,
+                MovimientoFinanciero.categoria_id == Categoria.id,
+                isouter=True,
+            )
+            .filter(MovimientoFinanciero.usuario_id == user.id)
+        )
+        if d_from:
+            q = q.filter(MovimientoFinanciero.fecha_movimiento >= d_from)
+        if d_to:
+            q = q.filter(MovimientoFinanciero.fecha_movimiento <= d_to)
+
+        q = q.order_by(
+            MovimientoFinanciero.fecha_movimiento.desc(),
+            MovimientoFinanciero.creado_en.desc(),
+        )
+
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output, fieldnames=["Fecha", "Monto", "Moneda", "Categoria", "Descripcion"]
+        )
+        writer.writeheader()
+        yield output.getvalue()
+        output.seek(0)
+        output.truncate(0)
+
+        for row in q.yield_per(100):
+            writer.writerow(
+                {
+                    "Fecha": row.MovimientoFinanciero.fecha_movimiento.strftime(
+                        "%Y-%m-%d"
+                    ),
+                    "Monto": float(row.MovimientoFinanciero.cantidad),
+                    "Moneda": row.MovimientoFinanciero.moneda or "ARS",
+                    "Categoria": row.Categoria.nombre if row.Categoria else "Otro",
+                    "Descripcion": row.MovimientoFinanciero.descripcion or "",
+                }
+            )
+            yield output.getvalue()
+            output.seek(0)
+            output.truncate(0)
+
+    headers = {"Content-Disposition": "attachment; filename=transacciones.csv"}
+    return StreamingResponse(iter_csv(), media_type="text/csv", headers=headers)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
