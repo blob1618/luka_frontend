@@ -1,27 +1,38 @@
 <!-- Hidden data carriers for JS re-read after HTMX swap -->
 <span id="chart-category-data" data-json='{{ by_category_json|safe }}'></span>
 <span id="chart-day-data"      data-json='{{ by_day_json|safe }}'></span>
+<span id="chart-flow-data"     data-json='{{ monthly_flow_json|safe }}'></span>
+<span id="chart-portfolio-data" data-json='{{ portfolio_json|safe }}'></span>
 
+<!-- Gráfico 1: Distribución por Categorías (Anillo) -->
 <div class="section-card chart-card" id="card-pie">
   <h2 class="section-title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-      <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
-    </svg>
-    Gastos por categoría
+    {% include 'components/icons/icon_pie_chart.svg' %}
+    Egresos por categoría
   </h2>
   <div class="chart-wrapper">
     <canvas id="chart-pie"></canvas>
   </div>
 </div>
 
-<div class="section-card chart-card" id="card-line">
+<!-- Gráfico 2: Composición Multidivisa (Barras Apiladas ARS vs USD) -->
+<div class="section-card chart-card" id="card-portfolio">
   <h2 class="section-title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-    </svg>
-    Evolución de gastos
+    {% include 'components/icons/icon_bar_chart.svg' %}
+    Egresos
   </h2>
   <div class="chart-wrapper">
-    <canvas id="chart-line"></canvas>
+    <canvas id="chart-portfolio"></canvas>
+  </div>
+</div>
+
+<!-- Gráfico 3: Flujo Ingresos vs Egresos (Barras Agrupadas) -->
+<div class="section-card chart-card chart-card--wide" id="card-flow">
+  <h2 class="section-title">
+    {% include 'components/icons/icon_activity.svg' %}
+    Flujo mensual — Ingresos vs Egresos
+  </h2>
+  <div class="chart-wrapper chart-wrapper--tall">
+    <canvas id="chart-flow"></canvas>
   </div>
 </div>

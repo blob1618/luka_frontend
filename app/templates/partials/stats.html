@@ -1,50 +1,73 @@
 <div class="stats-grid">
-  <div class="stat-card" id="stat-total">
-    <div class="stat-icon" style="--icon-color: #6366f1;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-        <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-      </svg>
+
+  <!-- KPI 1: Patrimonio Neto -->
+  <div class="stat-card stat-card--highlight" id="stat-patrimonio">
+    <div class="stat-icon" style="--icon-color: {% if patrimonio.is_positive %}#10b981{% else %}#f87171{% endif %};">
+      {% include 'components/icons/icon_trend_up.svg' %}
     </div>
     <div class="stat-body">
-      <p class="stat-label">Total gastado</p>
-      <p class="stat-value">${{ "%.2f"|format(stats.total_spent) }}</p>
+      <p class="stat-label">Patrimonio Neto</p>
+      <p class="stat-value {% if not patrimonio.is_positive %}stat-value--negative{% endif %}">
+        {% if patrimonio.is_positive %}+{% endif %}${{ "{:,.0f}".format(patrimonio.total_ars) }}
+      </p>
     </div>
   </div>
 
-  <div class="stat-card" id="stat-count">
-    <div class="stat-icon" style="--icon-color: #8b5cf6;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-        <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
-      </svg>
+  <!-- KPI 2: Cotización USD -->
+  <div class="stat-card" id="stat-cotizacion">
+    <div class="stat-icon" style="--icon-color: #10b981;">
+      {% include 'components/icons/icon_dollar.svg' %}
     </div>
     <div class="stat-body">
-      <p class="stat-label">Transacciones</p>
-      <p class="stat-value">{{ stats.transaction_count }}</p>
+      <p class="stat-label">Cotización USD</p>
+      <p class="stat-value">${{ "{:,.2f}".format(patrimonio.usd_rate) }}</p>
     </div>
   </div>
 
+  <!-- KPI 3: Consumo de Presupuesto -->
+  <div class="stat-card" id="stat-consumo">
+    <div class="stat-icon" style="--icon-color: {% if consumo.over %}#f87171{% elif consumo.pct > 80 %}#f59e0b{% else %}#6366f1{% endif %};">
+      {% include 'components/icons/icon_history_stats.svg' %}
+    </div>
+    <div class="stat-body stat-body--full">
+      <div class="stat-row">
+        <p class="stat-label">Presupuesto</p>
+        <p class="stat-value">{{ consumo.pct }}%</p>
+      </div>
+      <div class="kpi-bar-bg">
+        <div class="kpi-bar-fill {% if consumo.over %}kpi-bar--over{% elif consumo.pct > 80 %}kpi-bar--warn{% endif %}"
+             style="width: {{ consumo.pct }}%"></div>
+      </div>
+      <p class="stat-hint">
+        ${{ "{:,.0f}".format(consumo.spent) }} / ${{ "{:,.0f}".format(consumo.limit) }}
+        {% if consumo.limit == 0 %}<span class="stat-badge stat-badge--soon">Próximamente</span>{% endif %}
+        {% if consumo.over %}<span class="stat-badge stat-badge--danger">Excedido</span>{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <!-- KPI 4: Días de Racha -->
+  <div class="stat-card stat-card--placeholder" id="stat-racha">
+    <div class="stat-icon" style="--icon-color: #f59e0b;">
+      {% include 'components/icons/icon_streak.svg' %}
+    </div>
+    <div class="stat-body">
+      <p class="stat-label">Días de racha</p>
+      <p class="stat-value stat-value--muted">—</p>
+      <p class="stat-hint"><span class="stat-badge stat-badge--soon">Próximamente</span></p>
+    </div>
+  </div>
+
+  <!-- KPI 6: Categoría Top -->
   <div class="stat-card" id="stat-category">
-    <div class="stat-icon" style="--icon-color: #ec4899;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-        <line x1="7" y1="7" x2="7.01" y2="7"/>
-      </svg>
+    <div class="stat-icon" style="--icon-color: #8b5cf6;">
+      {% include 'components/icons/icon_tag_stats.svg' %}
     </div>
     <div class="stat-body">
       <p class="stat-label">Categoría top</p>
-      <p class="stat-value">{{ stats.top_category }}</p>
+      <p class="stat-value">{% if stats.top_category == "—" %}Sin datos{% else %}{{ stats.top_category }}{% endif %}</p>
+      <p class="stat-hint"><span class="stat-badge stat-badge--soon">Próximamente</span></p>
     </div>
   </div>
 
-  <div class="stat-card" id="stat-avg">
-    <div class="stat-icon" style="--icon-color: #14b8a6;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-      </svg>
-    </div>
-    <div class="stat-body">
-      <p class="stat-label">Promedio/día</p>
-      <p class="stat-value">${{ "%.2f"|format(stats.avg_per_day) }}</p>
-    </div>
-  </div>
 </div>

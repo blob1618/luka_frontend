@@ -9,10 +9,9 @@ valid session so you don't need the bot running.
 """
 
 import os
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Cookie, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from dotenv import load_dotenv
 

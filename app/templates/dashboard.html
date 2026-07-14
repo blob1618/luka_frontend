@@ -34,10 +34,7 @@
     </div>
     <a href="/export/csv?date_from={{ date_from }}&date_to={{ date_to }}"
        class="btn-export" id="btn-export-csv">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
+      {% include 'components/icons/icon_btn_export.svg' %}
       Exportar
     </a>
   </form>
@@ -48,19 +45,35 @@
   {% include "partials/stats.html" %}
 </section>
 
-<!-- ── Charts ── -->
-<section class="charts-grid" id="charts-section">
+<!-- ── Charts — grilla 2×2 superior + barra full-width ── -->
+<section class="charts-grid-2x2" id="charts-section">
   {% include "partials/charts.html" %}
+</section>
+
+<!-- ── Metas Compartidas — placeholder ── -->
+<section class="section-card section-card--placeholder" id="metas-section">
+  <h2 class="section-title">
+    {% include 'components/icons/icon_coming_soon.svg' %}
+    Metas compartidas
+    <span class="chip chip--soon">Próximamente</span>
+  </h2>
+  <div class="placeholder-body">
+    {% include 'components/icons/icon_placeholder.svg' %}
+    <p class="placeholder-title">Progreso de metas compartidas</p>
+    <p class="placeholder-desc">
+      Visualizá el avance de tus metas grupales y presupuestos compartidos.<br>
+      <!-- TODO: implementar tabla de metas compartidas y presupuestos grupales en el modelo -->
+      Esta funcionalidad estará disponible en una próxima versión.
+    </p>
+  </div>
 </section>
 
 <!-- ── Budget Bars ── -->
 {% if budgets %}
 <section class="section-card" id="budgets-section">
   <h2 class="section-title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-      <circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>
-    </svg>
-    Presupuestos
+    {% include 'components/icons/icon_history_nav.svg' %}
+    Presupuestos por categoría
   </h2>
   <div class="budgets-list">
     {% for b in budgets %}
@@ -98,9 +111,7 @@
 <!-- ── Recent Transactions ── -->
 <section class="section-card" id="transactions-section">
   <h2 class="section-title">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-    </svg>
+    {% include 'components/icons/icon_portfolio.svg' %}
     Últimas transacciones
   </h2>
   <div id="transactions-list">
@@ -111,26 +122,48 @@
 
 {% block scripts %}
 <script>
-// Serialize current chart data from Jinja into JS
+// ── Datos iniciales desde Jinja ───────────────────────────────────────────────
 const initialCategoryData = {{ by_category_json|safe }};
 const initialDayData      = {{ by_day_json|safe }};
+const initialFlowData     = {{ monthly_flow_json|safe }};
+const initialPortfolio    = {{ portfolio_json|safe }};
 
-let pieChart, lineChart;
+// Chart instances
+let pieChart, lineChart, flowChart, portfolioChart;
 
-function buildCharts(categoryData, dayData) {
-  // Doughnut — expenses by category
-  const pieCtx = document.getElementById('chart-pie');
-  if (!pieCtx) return;
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: {
+      labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 }, padding: 14 }
+    },
+  },
+  scales: {
+    x: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+    y: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, callback: v => `$${Number(v).toLocaleString('es-AR')}` }, grid: { color: 'rgba(255,255,255,0.04)' } }
+  }
+};
+
+function moneyLabel(v) {
+  return ` $${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
+}
+
+// ── Gráfico 1: Anillo — Gastos por Categoría ─────────────────────────────────
+function buildPieChart(data) {
+  const ctx = document.getElementById('chart-pie');
+  if (!ctx) return;
   if (pieChart) pieChart.destroy();
-  pieChart = new Chart(pieCtx, {
+  pieChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: categoryData.map(d => d.category),
+      labels: data.map(d => d.category),
       datasets: [{
-        data: categoryData.map(d => d.total),
-        backgroundColor: categoryData.map(d => d.color),
+        data: data.map(d => d.total),
+        backgroundColor: data.map(d => d.color),
         borderWidth: 0,
-        hoverOffset: 10,
+        hoverOffset: 12,
       }]
     },
     options: {
@@ -138,75 +171,121 @@ function buildCharts(categoryData, dayData) {
       maintainAspectRatio: false,
       cutout: '72%',
       plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 }, padding: 16 }
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` $${ctx.parsed.toLocaleString('es-AR', {minimumFractionDigits: 2})}`
-          }
-        }
-      }
-    }
-  });
-
-  // Line — spending over time
-  const lineCtx = document.getElementById('chart-line');
-  if (!lineCtx) return;
-  if (lineChart) lineChart.destroy();
-  lineChart = new Chart(lineCtx, {
-    type: 'line',
-    data: {
-      labels: dayData.map(d => d.day),
-      datasets: [{
-        label: 'Gastos diarios',
-        data: dayData.map(d => d.total),
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99,102,241,0.10)',
-        borderWidth: 2.5,
-        pointBackgroundColor: '#6366f1',
-        pointRadius: 4,
-        pointHoverRadius: 7,
-        fill: true,
-        tension: 0.4,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` $${ctx.parsed.y.toLocaleString('es-AR', {minimumFractionDigits: 2})}`
-          }
-        }
-      },
-      scales: {
-        x: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, callback: v => `$${v.toLocaleString()}` }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 }, padding: 16 } },
+        tooltip: { callbacks: { label: ctx => moneyLabel(ctx.parsed) } }
       }
     }
   });
 }
 
+// ── Gráfico 2: Barras Apiladas — Cartera Multidivisa ─────────────────────────
+function buildPortfolioChart(data) {
+  const ctx = document.getElementById('chart-portfolio');
+  if (!ctx) return;
+  if (portfolioChart) portfolioChart.destroy();
+  portfolioChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.month),
+      datasets: [
+        {
+          label: 'ARS',
+          data: data.map(d => d.ARS),
+          backgroundColor: 'rgba(99,102,241,0.75)',
+          borderRadius: 4,
+          borderSkipped: false,
+        },
+        {
+          label: 'USD (en ARS)',
+          data: data.map(d => d.USD),
+          backgroundColor: 'rgba(16,185,129,0.75)',
+          borderRadius: 4,
+          borderSkipped: false,
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: { ...CHART_DEFAULTS.plugins.legend, position: 'top' },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${moneyLabel(ctx.parsed.y)}` } }
+      },
+      scales: { ...CHART_DEFAULTS.scales }
+    }
+  });
+}
+
+// ── Gráfico 3: Barras Agrupadas — Ingresos vs Egresos mensual ───────────────
+function buildFlowChart(data) {
+  const ctx = document.getElementById('chart-flow');
+  if (!ctx) return;
+  if (flowChart) flowChart.destroy();
+  flowChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.month),
+      datasets: [
+        {
+          label: 'Ingresos',
+          data: data.map(d => d.ingresos),
+          backgroundColor: 'rgba(20,184,166,0.80)',
+          borderRadius: 5,
+          borderSkipped: false,
+        },
+        {
+          label: 'Egresos',
+          data: data.map(d => d.egresos),
+          backgroundColor: 'rgba(236,72,153,0.75)',
+          borderRadius: 5,
+          borderSkipped: false,
+        }
+      ]
+    },
+    options: {
+      ...CHART_DEFAULTS,
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: { ...CHART_DEFAULTS.plugins.legend, position: 'top' },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${moneyLabel(ctx.parsed.y)}` } }
+      }
+    }
+  });
+}
+
+// ── Build all charts ─────────────────────────────────────────────────────────
+function buildCharts(catData, dayData, flowData, portData) {
+  buildPieChart(catData);
+  buildPortfolioChart(portData);
+  buildFlowChart(flowData);
+}
+
 // Initial render
-document.addEventListener('DOMContentLoaded', () => buildCharts(initialCategoryData, initialDayData));
+document.addEventListener('DOMContentLoaded', () =>
+  buildCharts(initialCategoryData, initialDayData, initialFlowData, initialPortfolio)
+);
 
 // Refresh charts after HTMX filter update
 async function updateCharts() {
   const from = document.getElementById('date_from')?.value || '';
-  const to   = document.getElementById('date_to')?.value || '';
-  const res = await fetch(`/partials/charts?date_from=${from}&date_to=${to}`);
+  const to   = document.getElementById('date_to')?.value   || '';
+  const res  = await fetch(`/partials/charts?date_from=${from}&date_to=${to}`);
   const html = await res.text();
   document.getElementById('charts-section').innerHTML = html;
 
-  // Re-read JSON embedded in the partial
-  const catMatch = html.match(/id="chart-category-data"[^>]*data-json='([^']+)'/);
-  const dayMatch = html.match(/id="chart-day-data"[^>]*data-json='([^']+)'/);
-  if (catMatch && dayMatch) {
-    buildCharts(JSON.parse(catMatch[1]), JSON.parse(dayMatch[1]));
+  // Re-read embedded JSON from data carriers
+  const catEl   = document.getElementById('chart-category-data');
+  const dayEl   = document.getElementById('chart-day-data');
+  const flowEl  = document.getElementById('chart-flow-data');
+  const portEl  = document.getElementById('chart-portfolio-data');
+
+  if (catEl && dayEl && flowEl && portEl) {
+    buildCharts(
+      JSON.parse(catEl.dataset.json),
+      JSON.parse(dayEl.dataset.json),
+      JSON.parse(flowEl.dataset.json),
+      JSON.parse(portEl.dataset.json),
+    );
   }
 
   // Also refresh transactions

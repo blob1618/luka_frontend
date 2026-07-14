@@ -6,3 +6,8 @@ __pycache__/
 *.db
 *.sqlite
 .DS_Store
+
+.vscode/
+.agents/
+.pytest_cache/
+.ruff_cache/

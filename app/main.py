@@ -1,13 +1,12 @@
 import csv
 import io
 import json
-import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Request, Response, HTTPException
+from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -21,13 +20,18 @@ from app.auth import (
 )
 from app.dashboard import (
     get_budgets_with_usage,
+    get_consumo_presupuesto,
+    get_dias_racha,
     get_expenses_by_category,
     get_expenses_by_day,
+    get_monthly_flow,
+    get_patrimonio_neto,
+    get_portfolio_by_currency,
     get_user,
     get_recent_transactions,
     get_summary_stats,
 )
-from app.models.database import Base, engine, get_db
+from app.models.database import get_db
 
 load_dotenv()
 
@@ -72,7 +76,6 @@ async def login_page(request: Request, token: Optional[str] = None):
 @app.get("/dev-login", response_class=RedirectResponse)
 async def dev_login():
     """Shortcut for local development — bypass WhatsApp entirely."""
-    stub_token = "stub-dev-token-1234"
     response = RedirectResponse(url="/", status_code=303)
     from app.auth import MOCK_WHATSAPP_ID
     response.set_cookie(
@@ -96,6 +99,7 @@ async def logout():
 # Main dashboard
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _parse_date(val: Optional[str]) -> Optional[date]:
     if not val:
         return None
@@ -103,6 +107,17 @@ def _parse_date(val: Optional[str]) -> Optional[date]:
         return date.fromisoformat(val)
     except ValueError:
         return None
+
+def _get_default_dates(date_from: Optional[str], date_to: Optional[str]):
+    d_from = _parse_date(date_from)
+    d_to = _parse_date(date_to)
+    if not d_from and not d_to:
+        today = date.today()
+        d_from = today.replace(day=1)
+        d_to = today
+        date_from = d_from.isoformat()
+        date_to = d_to.isoformat()
+    return d_from, d_to, date_from, date_to
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -116,14 +131,21 @@ async def dashboard(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    d_from = _parse_date(date_from)
-    d_to = _parse_date(date_to)
+    
+    d_from, d_to, date_from, date_to = _get_default_dates(date_from, date_to)
 
     stats = get_summary_stats(db, user.id, d_from, d_to)
     by_category = get_expenses_by_category(db, user.id, d_from, d_to)
     by_day = get_expenses_by_day(db, user.id, d_from, d_to)
     transactions = get_recent_transactions(db, user.id, date_from=d_from, date_to=d_to)
     budgets = get_budgets_with_usage(db, user.id, d_from, d_to)
+
+    # ── KPIs ──────────────────────────────────────────────────────────
+    patrimonio = get_patrimonio_neto(db, user.id)
+    consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
+    dias_racha = get_dias_racha(db, user.id)          # TODO: lógica real pendiente
+    monthly_flow = get_monthly_flow(db, user.id)
+    portfolio = get_portfolio_by_currency(db, user.id)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -137,6 +159,11 @@ async def dashboard(
         "budgets": budgets,
         "date_from": date_from or "",
         "date_to": date_to or "",
+        "patrimonio": patrimonio,
+        "consumo": consumo,
+        "dias_racha": dias_racha,
+        "monthly_flow_json": json.dumps(monthly_flow),
+        "portfolio_json": json.dumps(portfolio),
     })
 
 
@@ -155,10 +182,18 @@ async def partial_stats(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    stats = get_summary_stats(db, user.id, _parse_date(date_from), _parse_date(date_to))
+    
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
+    stats = get_summary_stats(db, user.id, d_from, d_to)
+    patrimonio = get_patrimonio_neto(db, user.id)
+    consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
+    dias_racha = get_dias_racha(db, user.id)   # TODO: lógica real pendiente
     return templates.TemplateResponse("partials/stats.html", {
         "request": request,
         "stats": stats,
+        "patrimonio": patrimonio,
+        "consumo": consumo,
+        "dias_racha": dias_racha,
     })
 
 
@@ -173,13 +208,18 @@ async def partial_charts(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    d_from, d_to = _parse_date(date_from), _parse_date(date_to)
+    
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     by_category = get_expenses_by_category(db, user.id, d_from, d_to)
     by_day = get_expenses_by_day(db, user.id, d_from, d_to)
+    monthly_flow = get_monthly_flow(db, user.id)
+    portfolio = get_portfolio_by_currency(db, user.id)
     return templates.TemplateResponse("partials/charts.html", {
         "request": request,
         "by_category_json": json.dumps(by_category),
         "by_day_json": json.dumps(by_day),
+        "monthly_flow_json": json.dumps(monthly_flow),
+        "portfolio_json": json.dumps(portfolio),
     })
 
 
@@ -194,10 +234,12 @@ async def partial_transactions(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     transactions = get_recent_transactions(
         db, user.id,
-        date_from=_parse_date(date_from),
-        date_to=_parse_date(date_to),
+        date_from=d_from,
+        date_to=d_to,
     )
     return templates.TemplateResponse("partials/transactions.html", {
         "request": request,
@@ -219,10 +261,12 @@ async def export_csv(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     transactions = get_recent_transactions(
         db, user.id, limit=10_000,
-        date_from=_parse_date(date_from),
-        date_to=_parse_date(date_to),
+        date_from=d_from,
+        date_to=d_to,
     )
 
     output = io.StringIO()
