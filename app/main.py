@@ -1,6 +1,5 @@
 import csv
 import io
-import json
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from typing import Optional
@@ -23,7 +22,6 @@ from app.dashboard import (
     get_consumo_presupuesto,
     get_dias_racha,
     get_expenses_by_category,
-    get_expenses_by_day,
     get_monthly_flow,
     get_patrimonio_neto,
     get_portfolio_by_currency,
@@ -135,8 +133,6 @@ async def dashboard(
     d_from, d_to, date_from, date_to = _get_default_dates(date_from, date_to)
 
     stats = get_summary_stats(db, user.id, d_from, d_to)
-    by_category = get_expenses_by_category(db, user.id, d_from, d_to)
-    by_day = get_expenses_by_day(db, user.id, d_from, d_to)
     transactions = get_recent_transactions(db, user.id, date_from=d_from, date_to=d_to)
     budgets = get_budgets_with_usage(db, user.id, d_from, d_to)
 
@@ -144,17 +140,11 @@ async def dashboard(
     patrimonio = get_patrimonio_neto(db, user.id)
     consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
     dias_racha = get_dias_racha(db, user.id)          # TODO: lógica real pendiente
-    monthly_flow = get_monthly_flow(db, user.id)
-    portfolio = get_portfolio_by_currency(db, user.id)
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "whatsapp_id": whatsapp_id,
         "stats": stats,
-        "by_category": by_category,
-        "by_category_json": json.dumps(by_category),
-        "by_day": by_day,
-        "by_day_json": json.dumps(by_day),
         "transactions": transactions,
         "budgets": budgets,
         "date_from": date_from or "",
@@ -162,9 +152,45 @@ async def dashboard(
         "patrimonio": patrimonio,
         "consumo": consumo,
         "dias_racha": dias_racha,
-        "monthly_flow_json": json.dumps(monthly_flow),
-        "portfolio_json": json.dumps(portfolio),
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Data Routes (Charts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/graficos/distribucion")
+async def api_graficos_distribucion(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+    whatsapp_id: str = Depends(get_current_user),
+):
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
+    return get_expenses_by_category(db, user.id, d_from, d_to)
+
+@app.get("/api/graficos/cartera")
+async def api_graficos_cartera(
+    db: Session = Depends(get_db),
+    whatsapp_id: str = Depends(get_current_user),
+):
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    return get_portfolio_by_currency(db, user.id)
+
+@app.get("/api/graficos/flujo")
+async def api_graficos_flujo(
+    db: Session = Depends(get_db),
+    whatsapp_id: str = Depends(get_current_user),
+):
+    user = get_user(db, whatsapp_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    return get_monthly_flow(db, user.id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,17 +235,8 @@ async def partial_charts(
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     
-    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
-    by_category = get_expenses_by_category(db, user.id, d_from, d_to)
-    by_day = get_expenses_by_day(db, user.id, d_from, d_to)
-    monthly_flow = get_monthly_flow(db, user.id)
-    portfolio = get_portfolio_by_currency(db, user.id)
     return templates.TemplateResponse("partials/charts.html", {
         "request": request,
-        "by_category_json": json.dumps(by_category),
-        "by_day_json": json.dumps(by_day),
-        "monthly_flow_json": json.dumps(monthly_flow),
-        "portfolio_json": json.dumps(portfolio),
     })
 
 

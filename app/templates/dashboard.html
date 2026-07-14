@@ -122,14 +122,8 @@
 
 {% block scripts %}
 <script>
-// ── Datos iniciales desde Jinja ───────────────────────────────────────────────
-const initialCategoryData = {{ by_category_json|safe }};
-const initialDayData      = {{ by_day_json|safe }};
-const initialFlowData     = {{ monthly_flow_json|safe }};
-const initialPortfolio    = {{ portfolio_json|safe }};
-
 // Chart instances
-let pieChart, lineChart, flowChart, portfolioChart;
+let pieChart, flowChart, portfolioChart;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const CHART_DEFAULTS = {
@@ -254,39 +248,49 @@ function buildFlowChart(data) {
 }
 
 // ── Build all charts ─────────────────────────────────────────────────────────
-function buildCharts(catData, dayData, flowData, portData) {
-  buildPieChart(catData);
-  buildPortfolioChart(portData);
-  buildFlowChart(flowData);
+async function fetchAndBuildCharts(from = '', to = '') {
+  try {
+    const [resCat, resPort, resFlow] = await Promise.all([
+      fetch(`/api/graficos/distribucion?date_from=${from}&date_to=${to}`),
+      fetch(`/api/graficos/cartera`),
+      fetch(`/api/graficos/flujo`),
+    ]);
+    
+    if (resCat.ok && resPort.ok && resFlow.ok) {
+      const catData = await resCat.json();
+      const portData = await resPort.json();
+      const flowData = await resFlow.json();
+      
+      buildPieChart(catData);
+      buildPortfolioChart(portData);
+      buildFlowChart(flowData);
+    } else {
+      console.error("Error fetching chart data");
+    }
+  } catch (err) {
+    console.error("Failed to load charts:", err);
+  }
 }
 
 // Initial render
-document.addEventListener('DOMContentLoaded', () =>
-  buildCharts(initialCategoryData, initialDayData, initialFlowData, initialPortfolio)
-);
+document.addEventListener('DOMContentLoaded', () => {
+  const from = document.getElementById('date_from')?.value || '';
+  const to   = document.getElementById('date_to')?.value   || '';
+  fetchAndBuildCharts(from, to);
+});
 
 // Refresh charts after HTMX filter update
 async function updateCharts() {
   const from = document.getElementById('date_from')?.value || '';
   const to   = document.getElementById('date_to')?.value   || '';
+  
+  // Refresh chart HTML containers (since HTMX swap deletes the canvas elements)
   const res  = await fetch(`/partials/charts?date_from=${from}&date_to=${to}`);
   const html = await res.text();
   document.getElementById('charts-section').innerHTML = html;
 
-  // Re-read embedded JSON from data carriers
-  const catEl   = document.getElementById('chart-category-data');
-  const dayEl   = document.getElementById('chart-day-data');
-  const flowEl  = document.getElementById('chart-flow-data');
-  const portEl  = document.getElementById('chart-portfolio-data');
-
-  if (catEl && dayEl && flowEl && portEl) {
-    buildCharts(
-      JSON.parse(catEl.dataset.json),
-      JSON.parse(dayEl.dataset.json),
-      JSON.parse(flowEl.dataset.json),
-      JSON.parse(portEl.dataset.json),
-    );
-  }
+  // Fetch JSON data and build charts on the new canvases
+  await fetchAndBuildCharts(from, to);
 
   // Also refresh transactions
   const txRes = await fetch(`/partials/transactions?date_from=${from}&date_to=${to}`);
