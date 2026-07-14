@@ -13,7 +13,12 @@ import uuid
 from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 
-from app.models.database import MovimientoFinanciero, LimiteCategoria, Usuario, Categoria
+from app.models.database import (
+    MovimientoFinanciero,
+    LimiteCategoria,
+    Usuario,
+    Categoria,
+)
 
 CATEGORY_COLORS = {
     "Comida": "#6366f1",
@@ -42,11 +47,15 @@ def get_summary_stats(
     date_to: Optional[date] = None,
 ) -> dict:
     """Return total spent, number of transactions, top category."""
-    q = db.query(MovimientoFinanciero, Categoria).join(
-        Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
-    ).filter(
-        MovimientoFinanciero.usuario_id == user_id,
-        MovimientoFinanciero.tipo == 'egreso'
+    q = (
+        db.query(MovimientoFinanciero, Categoria)
+        .join(
+            Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
+        )
+        .filter(
+            MovimientoFinanciero.usuario_id == user_id,
+            MovimientoFinanciero.tipo == "egreso",
+        )
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -54,18 +63,22 @@ def get_summary_stats(
         q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
 
     expenses = q.all()
-    total = sum(e.MovimientoFinanciero.cantidad for e in expenses) if expenses else Decimal("0")
+    total = (
+        sum(e.MovimientoFinanciero.cantidad for e in expenses)
+        if expenses
+        else Decimal("0")
+    )
 
     # query for income
     q_in = db.query(MovimientoFinanciero).filter(
         MovimientoFinanciero.usuario_id == user_id,
-        MovimientoFinanciero.tipo == 'ingreso'
+        MovimientoFinanciero.tipo == "ingreso",
     )
     if date_from:
         q_in = q_in.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
     if date_to:
         q_in = q_in.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
-    
+
     incomes = q_in.all()
     total_income = sum(i.cantidad for i in incomes) if incomes else Decimal("0")
 
@@ -73,7 +86,9 @@ def get_summary_stats(
     cat_totals: dict[str, Decimal] = {}
     for e in expenses:
         cat_name = e.Categoria.nombre if e.Categoria else "Otro"
-        cat_totals[cat_name] = cat_totals.get(cat_name, Decimal("0")) + Decimal(str(e.MovimientoFinanciero.cantidad))
+        cat_totals[cat_name] = cat_totals.get(cat_name, Decimal("0")) + Decimal(
+            str(e.MovimientoFinanciero.cantidad)
+        )
     top_category = max(cat_totals, key=cat_totals.get) if cat_totals else "—"
 
     end_date = min(date_to, date.today()) if date_to else date.today()
@@ -96,14 +111,18 @@ def get_expenses_by_category(
     date_to: Optional[date] = None,
 ) -> list[dict]:
     """Return [{category, total, color}] sorted by total desc."""
-    q = db.query(
-        Categoria.nombre.label("categoria_nombre"),
-        func.sum(MovimientoFinanciero.cantidad).label("total")
-    ).join(
-        Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
-    ).filter(
-        MovimientoFinanciero.usuario_id == user_id,
-        MovimientoFinanciero.tipo == 'egreso'
+    q = (
+        db.query(
+            Categoria.nombre.label("categoria_nombre"),
+            func.sum(MovimientoFinanciero.cantidad).label("total"),
+        )
+        .join(
+            Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
+        )
+        .filter(
+            MovimientoFinanciero.usuario_id == user_id,
+            MovimientoFinanciero.tipo == "egreso",
+        )
     )
 
     if date_from:
@@ -111,7 +130,11 @@ def get_expenses_by_category(
     if date_to:
         q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
 
-    rows = q.group_by(Categoria.nombre).order_by(func.sum(MovimientoFinanciero.cantidad).desc()).all()
+    rows = (
+        q.group_by(Categoria.nombre)
+        .order_by(func.sum(MovimientoFinanciero.cantidad).desc())
+        .all()
+    )
     return [
         {
             "category": r.categoria_nombre or "Otro",
@@ -131,10 +154,10 @@ def get_expenses_by_day(
     """Return [{date_label, total}] for the line chart."""
     q = db.query(
         MovimientoFinanciero.fecha_movimiento.label("day"),
-        func.sum(MovimientoFinanciero.cantidad).label("total")
+        func.sum(MovimientoFinanciero.cantidad).label("total"),
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
-        MovimientoFinanciero.tipo == 'egreso'
+        MovimientoFinanciero.tipo == "egreso",
     )
 
     if date_from:
@@ -142,7 +165,11 @@ def get_expenses_by_day(
     if date_to:
         q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
 
-    rows = q.group_by(MovimientoFinanciero.fecha_movimiento).order_by(MovimientoFinanciero.fecha_movimiento).all()
+    rows = (
+        q.group_by(MovimientoFinanciero.fecha_movimiento)
+        .order_by(MovimientoFinanciero.fecha_movimiento)
+        .all()
+    )
     return [{"day": str(r.day), "total": float(r.total)} for r in rows]
 
 
@@ -153,10 +180,12 @@ def get_recent_transactions(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
 ) -> list[dict]:
-    q = db.query(MovimientoFinanciero, Categoria).join(
-        Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
-    ).filter(
-        MovimientoFinanciero.usuario_id == user_id
+    q = (
+        db.query(MovimientoFinanciero, Categoria)
+        .join(
+            Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
+        )
+        .filter(MovimientoFinanciero.usuario_id == user_id)
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -173,8 +202,14 @@ def get_recent_transactions(
             "category": e.Categoria.nombre if e.Categoria else "Otro",
             "description": e.MovimientoFinanciero.descripcion or "—",
             "date": e.MovimientoFinanciero.fecha_movimiento.strftime("%d %b %Y"),
-            "time": e.MovimientoFinanciero.creado_en.strftime("%H:%M") if e.MovimientoFinanciero.creado_en else "00:00",
-            "color": CATEGORY_COLORS.get(e.Categoria.nombre if e.Categoria else "Otro", "#64748b") if e.MovimientoFinanciero.tipo == 'egreso' else "#10b981",
+            "time": e.MovimientoFinanciero.creado_en.strftime("%H:%M")
+            if e.MovimientoFinanciero.creado_en
+            else "00:00",
+            "color": CATEGORY_COLORS.get(
+                e.Categoria.nombre if e.Categoria else "Otro", "#64748b"
+            )
+            if e.MovimientoFinanciero.tipo == "egreso"
+            else "#10b981",
         }
         for e in rows
     ]
@@ -186,16 +221,19 @@ def get_budgets_with_usage(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
 ) -> list[dict]:
-    budgets = db.query(LimiteCategoria, Categoria).join(
-        Categoria, LimiteCategoria.categoria_id == Categoria.id, isouter=True
-    ).filter(LimiteCategoria.usuario_id == user_id).all()
-    
+    budgets = (
+        db.query(LimiteCategoria, Categoria)
+        .join(Categoria, LimiteCategoria.categoria_id == Categoria.id, isouter=True)
+        .filter(LimiteCategoria.usuario_id == user_id)
+        .all()
+    )
+
     result = []
     for b in budgets:
         q = db.query(func.sum(MovimientoFinanciero.cantidad)).filter(
             MovimientoFinanciero.usuario_id == user_id,
             MovimientoFinanciero.categoria_id == b.LimiteCategoria.categoria_id,
-            MovimientoFinanciero.tipo == 'egreso'
+            MovimientoFinanciero.tipo == "egreso",
         )
         if date_from:
             q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -205,23 +243,26 @@ def get_budgets_with_usage(
         spent = float(q.scalar() or 0)
         limit = float(b.LimiteCategoria.cantidad_max)
         pct = min(round((spent / limit) * 100) if limit > 0 else 0, 100)
-        
+
         cat_name = b.Categoria.nombre if b.Categoria else "Otro"
-        result.append({
-            "category": cat_name,
-            "limit": limit,
-            "spent": spent,
-            "remaining": max(limit - spent, 0),
-            "pct": pct,
-            "color": CATEGORY_COLORS.get(cat_name, "#64748b"),
-            "over": spent > limit,
-        })
+        result.append(
+            {
+                "category": cat_name,
+                "limit": limit,
+                "spent": spent,
+                "remaining": max(limit - spent, 0),
+                "pct": pct,
+                "color": CATEGORY_COLORS.get(cat_name, "#64748b"),
+                "over": spent > limit,
+            }
+        )
     return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # NEW KPIs
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def get_patrimonio_neto(
     db: Session,
@@ -285,7 +326,9 @@ def get_consumo_presupuesto(
     """
     Porcentaje global gastado sobre el límite mensual total de todos los presupuestos.
     """
-    budgets = db.query(LimiteCategoria).filter(LimiteCategoria.usuario_id == user_id).all()
+    budgets = (
+        db.query(LimiteCategoria).filter(LimiteCategoria.usuario_id == user_id).all()
+    )
     if not budgets:
         return {"pct": 0, "spent": 0.0, "limit": 0.0}
 
@@ -339,7 +382,11 @@ def get_monthly_flow(
     if date_to:
         q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
 
-    rows = q.group_by("year", "month", MovimientoFinanciero.tipo).order_by("year", "month").all()
+    rows = (
+        q.group_by("year", "month", MovimientoFinanciero.tipo)
+        .order_by("year", "month")
+        .all()
+    )
 
     # Build a dict keyed by (year, month)
     flow_map: dict[tuple, dict] = {}
@@ -353,12 +400,25 @@ def get_monthly_flow(
             flow_map[key]["egresos"] = float(r.total or 0)
 
     # Sort by month
-    MONTH_NAMES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    MONTH_NAMES_ES = [
+        "Ene",
+        "Feb",
+        "Mar",
+        "Abr",
+        "May",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dic",
+    ]
     sorted_keys = sorted(flow_map.keys())
     # If no dates are provided, we can default to last 6 months
     if not date_from and not date_to:
         sorted_keys = sorted_keys[-6:]
-    
+
     return [
         {
             "month": f"{MONTH_NAMES_ES[k[1]-1]} {k[0]}",
@@ -394,7 +454,11 @@ def get_portfolio_by_currency(
     if date_to:
         q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
 
-    rows = q.group_by("year", "month", MovimientoFinanciero.moneda).order_by("year", "month").all()
+    rows = (
+        q.group_by("year", "month", MovimientoFinanciero.moneda)
+        .order_by("year", "month")
+        .all()
+    )
 
     portfolio_map: dict[tuple, dict] = {}
     usd_rate = float(USD_TO_ARS_RATE)
@@ -410,11 +474,24 @@ def get_portfolio_by_currency(
         else:
             portfolio_map[key]["ARS"] += amount
 
-    MONTH_NAMES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+    MONTH_NAMES_ES = [
+        "Ene",
+        "Feb",
+        "Mar",
+        "Abr",
+        "May",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dic",
+    ]
     sorted_keys = sorted(portfolio_map.keys())
     if not date_from and not date_to:
         sorted_keys = sorted_keys[-6:]
-        
+
     return [
         {
             "month": f"{MONTH_NAMES_ES[k[1]-1]} {k[0]}",

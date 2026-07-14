@@ -28,6 +28,7 @@ serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 # --- Session helpers ----------------------------------------------------------
 
+
 def create_session_token(whatsapp_id: str) -> str:
     """Sign a whatsapp_id into a tamper-proof session cookie value."""
     return serializer.dumps(whatsapp_id, salt="session")
@@ -43,6 +44,7 @@ def decode_session_token(token: str) -> Optional[str]:
 
 # --- Mock JWT (stub for the bot link) ----------------------------------------
 
+
 def decode_magic_link_token(token: str) -> Optional[str]:
     """
     Stub: accepts the magic token sent by the WhatsApp bot.
@@ -55,6 +57,7 @@ def decode_magic_link_token(token: str) -> Optional[str]:
 
 
 # --- FastAPI dependency -------------------------------------------------------
+
 
 def get_current_user(request: Request) -> str:
     """

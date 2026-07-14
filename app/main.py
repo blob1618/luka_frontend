@@ -1,12 +1,10 @@
-import csv
-import io
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -50,6 +48,7 @@ templates = Jinja2Templates(directory="app/templates")
 # Auth routes
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, token: Optional[str] = None):
     """
@@ -68,7 +67,9 @@ async def login_page(request: Request, token: Optional[str] = None):
                 samesite="lax",
             )
             return response
-    return templates.TemplateResponse("login.html", {"request": request, "error": bool(token)})
+    return templates.TemplateResponse(
+        "login.html", {"request": request, "error": bool(token)}
+    )
 
 
 @app.get("/dev-login", response_class=RedirectResponse)
@@ -76,6 +77,7 @@ async def dev_login():
     """Shortcut for local development — bypass WhatsApp entirely."""
     response = RedirectResponse(url="/", status_code=303)
     from app.auth import MOCK_WHATSAPP_ID
+
     response.set_cookie(
         SESSION_COOKIE,
         create_session_token(MOCK_WHATSAPP_ID),
@@ -106,6 +108,7 @@ def _parse_date(val: Optional[str]) -> Optional[date]:
     except ValueError:
         return None
 
+
 def _get_default_dates(date_from: Optional[str], date_to: Optional[str]):
     d_from = _parse_date(date_from)
     d_to = _parse_date(date_to)
@@ -129,7 +132,7 @@ async def dashboard(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    
+
     d_from, d_to, date_from, date_to = _get_default_dates(date_from, date_to)
 
     stats = get_summary_stats(db, user.id, d_from, d_to)
@@ -139,25 +142,29 @@ async def dashboard(
     # ── KPIs ──────────────────────────────────────────────────────────
     patrimonio = get_patrimonio_neto(db, user.id, d_from, d_to)
     consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
-    dias_racha = get_dias_racha(db, user.id)          # TODO: lógica real pendiente
+    dias_racha = get_dias_racha(db, user.id)  # TODO: lógica real pendiente
 
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "whatsapp_id": whatsapp_id,
-        "stats": stats,
-        "transactions": transactions,
-        "budgets": budgets,
-        "date_from": date_from or "",
-        "date_to": date_to or "",
-        "patrimonio": patrimonio,
-        "consumo": consumo,
-        "dias_racha": dias_racha,
-    })
+    return templates.TemplateResponse(
+        "dashboard.html",
+        {
+            "request": request,
+            "whatsapp_id": whatsapp_id,
+            "stats": stats,
+            "transactions": transactions,
+            "budgets": budgets,
+            "date_from": date_from or "",
+            "date_to": date_to or "",
+            "patrimonio": patrimonio,
+            "consumo": consumo,
+            "dias_racha": dias_racha,
+        },
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API Data Routes (Charts)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @app.get("/api/graficos/distribucion")
 async def api_graficos_distribucion(
@@ -172,6 +179,7 @@ async def api_graficos_distribucion(
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     return get_expenses_by_category(db, user.id, d_from, d_to)
 
+
 @app.get("/api/graficos/cartera")
 async def api_graficos_cartera(
     date_from: Optional[str] = None,
@@ -184,6 +192,7 @@ async def api_graficos_cartera(
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     return get_portfolio_by_currency(db, user.id, d_from, d_to)
+
 
 @app.get("/api/graficos/flujo")
 async def api_graficos_flujo(
@@ -203,6 +212,7 @@ async def api_graficos_flujo(
 # HTMX partials (update only parts of the page without a full reload)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @app.get("/dashboard/actualizar", response_class=HTMLResponse)
 async def dashboard_actualizar(
     request: Request,
@@ -214,21 +224,24 @@ async def dashboard_actualizar(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    
+
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     stats = get_summary_stats(db, user.id, d_from, d_to)
     patrimonio = get_patrimonio_neto(db, user.id, d_from, d_to)
     consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
-    dias_racha = get_dias_racha(db, user.id)   # TODO: lógica real pendiente
-    
-    response = templates.TemplateResponse("partials/stats.html", {
-        "request": request,
-        "stats": stats,
-        "patrimonio": patrimonio,
-        "consumo": consumo,
-        "dias_racha": dias_racha,
-    })
-    
+    dias_racha = get_dias_racha(db, user.id)  # TODO: lógica real pendiente
+
+    response = templates.TemplateResponse(
+        "partials/stats.html",
+        {
+            "request": request,
+            "stats": stats,
+            "patrimonio": patrimonio,
+            "consumo": consumo,
+            "dias_racha": dias_racha,
+        },
+    )
+
     # Emitimos un evento a HTMX para que el frontend redibuje los gráficos y transacciones
     response.headers["HX-Trigger"] = "actualizarGraficos"
     return response
@@ -245,10 +258,13 @@ async def partial_charts(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    
-    return templates.TemplateResponse("partials/charts.html", {
-        "request": request,
-    })
+
+    return templates.TemplateResponse(
+        "partials/charts.html",
+        {
+            "request": request,
+        },
+    )
 
 
 @app.get("/partials/transactions", response_class=HTMLResponse)
@@ -262,57 +278,27 @@ async def partial_transactions(
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    
+
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     transactions = get_recent_transactions(
-        db, user.id,
+        db,
+        user.id,
         date_from=d_from,
         date_to=d_to,
     )
-    return templates.TemplateResponse("partials/transactions.html", {
-        "request": request,
-        "transactions": transactions,
-    })
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Export
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.get("/export/csv")
-async def export_csv(
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
-):
-    user = get_user(db, whatsapp_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    
-    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
-    transactions = get_recent_transactions(
-        db, user.id, limit=10_000,
-        date_from=d_from,
-        date_to=d_to,
-    )
-
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=["id", "date", "time", "category", "description", "amount"])
-    writer.writeheader()
-    writer.writerows(transactions)
-
-    filename = f"luka_gastos_{datetime.now().strftime('%Y%m%d')}.csv"
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    return templates.TemplateResponse(
+        "partials/transactions.html",
+        {
+            "request": request,
+            "transactions": transactions,
+        },
     )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Error handlers — redirect to login on 401
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @app.exception_handler(401)
 async def unauthorized_handler(request: Request, exc):

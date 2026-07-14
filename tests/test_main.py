@@ -4,11 +4,13 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def test_login_page_renders():
     response = client.get("/login")
     assert response.status_code == 200
     assert "LUKA" in response.text
     assert "WhatsApp" in response.text
+
 
 def test_dashboard_redirects_unauthorized():
     response = client.get("/", follow_redirects=False)
