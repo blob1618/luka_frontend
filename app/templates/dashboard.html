@@ -10,27 +10,18 @@
   </div>
   <!-- Date filters: HTMX updates stats, charts, and transactions -->
   <form class="filter-form"
-        hx-get="/partials/stats"
+        hx-get="/dashboard/actualizar"
         hx-target="#stats-section"
         hx-swap="innerHTML"
-        hx-include="[name='date_from'],[name='date_to']"
         hx-trigger="change"
         id="filter-form">
     <div class="filter-group">
       <label for="date_from">Desde</label>
-      <input type="date" id="date_from" name="date_from" value="{{ date_from }}"
-             hx-get="/partials/stats" hx-target="#stats-section" hx-swap="innerHTML"
-             hx-include="[name='date_from'],[name='date_to']"
-             hx-trigger="change"
-             hx-on::after-request="updateCharts(event)" />
+      <input type="date" id="date_from" name="date_from" value="{{ date_from }}" />
     </div>
     <div class="filter-group">
       <label for="date_to">Hasta</label>
-      <input type="date" id="date_to" name="date_to" value="{{ date_to }}"
-             hx-get="/partials/stats" hx-target="#stats-section" hx-swap="innerHTML"
-             hx-include="[name='date_from'],[name='date_to']"
-             hx-trigger="change"
-             hx-on::after-request="updateCharts(event)" />
+      <input type="date" id="date_to" name="date_to" value="{{ date_to }}" />
     </div>
     <a href="/export/csv?date_from={{ date_from }}&date_to={{ date_to }}"
        class="btn-export" id="btn-export-csv">
@@ -144,6 +135,37 @@ function moneyLabel(v) {
   return ` $${Number(v).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`;
 }
 
+// ── Manejo de estados vacíos para gráficos ───────────────────────────────────
+function handleEmptyChart(containerId, hasData) {
+  const container = document.getElementById(containerId);
+  if (!container) return false;
+  
+  // Quitar mensaje anterior si existe
+  const existingMsg = container.querySelector('.chart-empty-msg');
+  if (existingMsg) existingMsg.remove();
+  
+  const canvas = container.querySelector('canvas');
+  if (!hasData) {
+    if (canvas) canvas.style.display = 'none';
+    const msg = document.createElement('div');
+    msg.className = 'empty-state chart-empty-msg';
+    msg.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100%;padding:0;';
+    msg.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="opacity:0.5; margin-bottom:4px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>
+      </svg>
+      <p style="color:var(--text-secondary); font-weight:600; font-size:0.95rem; margin-bottom:4px;">Sin datos</p>
+      <p class="empty-hint">No hay movimientos para graficar en este rango.</p>
+    `;
+    container.style.position = 'relative';
+    container.appendChild(msg);
+    return true; // is empty
+  } else {
+    if (canvas) canvas.style.display = 'block';
+    return false; // has data
+  }
+}
+
 // ── Gráfico 1: Anillo — Gastos por Categoría ─────────────────────────────────
 function buildPieChart(data) {
   const ctx = document.getElementById('chart-pie');
@@ -252,8 +274,8 @@ async function fetchAndBuildCharts(from = '', to = '') {
   try {
     const [resCat, resPort, resFlow] = await Promise.all([
       fetch(`/api/graficos/distribucion?date_from=${from}&date_to=${to}`),
-      fetch(`/api/graficos/cartera`),
-      fetch(`/api/graficos/flujo`),
+      fetch(`/api/graficos/cartera?date_from=${from}&date_to=${to}`),
+      fetch(`/api/graficos/flujo?date_from=${from}&date_to=${to}`),
     ]);
     
     if (resCat.ok && resPort.ok && resFlow.ok) {
@@ -261,9 +283,13 @@ async function fetchAndBuildCharts(from = '', to = '') {
       const portData = await resPort.json();
       const flowData = await resFlow.json();
       
-      buildPieChart(catData);
-      buildPortfolioChart(portData);
-      buildFlowChart(flowData);
+      const isCatEmpty = catData.length === 0 || catData.every(d => d.total === 0);
+      const isPortEmpty = portData.length === 0 || portData.every(d => d.ARS === 0 && d.USD === 0);
+      const isFlowEmpty = flowData.length === 0 || flowData.every(d => d.ingresos === 0 && d.egresos === 0);
+      
+      if (!handleEmptyChart('card-pie', !isCatEmpty)) buildPieChart(catData);
+      if (!handleEmptyChart('card-portfolio', !isPortEmpty)) buildPortfolioChart(portData);
+      if (!handleEmptyChart('card-flow', !isFlowEmpty)) buildFlowChart(flowData);
     } else {
       console.error("Error fetching chart data");
     }
@@ -279,22 +305,17 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchAndBuildCharts(from, to);
 });
 
-// Refresh charts after HTMX filter update
-async function updateCharts() {
+// Listen for the custom HTMX event triggered by the backend
+document.body.addEventListener('actualizarGraficos', async function() {
   const from = document.getElementById('date_from')?.value || '';
   const to   = document.getElementById('date_to')?.value   || '';
   
-  // Refresh chart HTML containers (since HTMX swap deletes the canvas elements)
-  const res  = await fetch(`/partials/charts?date_from=${from}&date_to=${to}`);
-  const html = await res.text();
-  document.getElementById('charts-section').innerHTML = html;
-
-  // Fetch JSON data and build charts on the new canvases
+  // Fetch JSON data and build charts on the existing canvases
   await fetchAndBuildCharts(from, to);
 
   // Also refresh transactions
   const txRes = await fetch(`/partials/transactions?date_from=${from}&date_to=${to}`);
   document.getElementById('transactions-list').innerHTML = await txRes.text();
-}
+});
 </script>
 {% endblock %}

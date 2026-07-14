@@ -223,22 +223,33 @@ def get_budgets_with_usage(
 # NEW KPIs
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_patrimonio_neto(db: Session, user_id: uuid.UUID) -> dict:
+def get_patrimonio_neto(
+    db: Session,
+    user_id: uuid.UUID,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> dict:
     """
-    Total de capital neto expresado en ARS.
+    Total de capital neto expresado en ARS en un período determinado.
     Suma ingresos - egresos. Los movimientos en USD se convierten usando
     la cotización hardcodeada USD_TO_ARS_RATE.
 
     TODO: Integrar cotización cacheada real desde Redis / tabla de config en BD.
           No debe llamar a la API externa en tiempo real.
     """
-    rows = db.query(
+    q = db.query(
         MovimientoFinanciero.tipo,
         MovimientoFinanciero.moneda,
         func.sum(MovimientoFinanciero.cantidad).label("total"),
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
-    ).group_by(
+    )
+    if date_from:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
+    if date_to:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
+
+    rows = q.group_by(
         MovimientoFinanciero.tipo,
         MovimientoFinanciero.moneda,
     ).all()
@@ -308,20 +319,27 @@ def get_consumo_presupuesto(
 def get_monthly_flow(
     db: Session,
     user_id: uuid.UUID,
-    months: int = 6,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> list[dict]:
     """
-    Ingresos vs Egresos por mes (últimos N meses).
+    Ingresos vs Egresos por mes.
     Devuelve [{month, ingresos, egresos}] para el gráfico de barras agrupadas.
     """
-    rows = db.query(
+    q = db.query(
         extract("year", MovimientoFinanciero.fecha_movimiento).label("year"),
         extract("month", MovimientoFinanciero.fecha_movimiento).label("month"),
         MovimientoFinanciero.tipo,
         func.sum(MovimientoFinanciero.cantidad).label("total"),
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
-    ).group_by("year", "month", MovimientoFinanciero.tipo).order_by("year", "month").all()
+    )
+    if date_from:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
+    if date_to:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
+
+    rows = q.group_by("year", "month", MovimientoFinanciero.tipo).order_by("year", "month").all()
 
     # Build a dict keyed by (year, month)
     flow_map: dict[tuple, dict] = {}
@@ -334,9 +352,13 @@ def get_monthly_flow(
         else:
             flow_map[key]["egresos"] = float(r.total or 0)
 
-    # Sort and take last N months
+    # Sort by month
     MONTH_NAMES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    sorted_keys = sorted(flow_map.keys())[-months:]
+    sorted_keys = sorted(flow_map.keys())
+    # If no dates are provided, we can default to last 6 months
+    if not date_from and not date_to:
+        sorted_keys = sorted_keys[-6:]
+    
     return [
         {
             "month": f"{MONTH_NAMES_ES[k[1]-1]} {k[0]}",
@@ -350,14 +372,15 @@ def get_monthly_flow(
 def get_portfolio_by_currency(
     db: Session,
     user_id: uuid.UUID,
-    months: int = 6,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> list[dict]:
     """
     Composición de cartera por moneda (ARS vs USD) mes a mes.
     Devuelve [{month, ARS, USD}] para el gráfico de barras apiladas.
-    Solo egresos para ver distribución de gasto, o todos los movimientos para patrimonio.
+    Solo egresos para ver distribución de gasto.
     """
-    rows = db.query(
+    q = db.query(
         extract("year", MovimientoFinanciero.fecha_movimiento).label("year"),
         extract("month", MovimientoFinanciero.fecha_movimiento).label("month"),
         MovimientoFinanciero.moneda,
@@ -365,7 +388,13 @@ def get_portfolio_by_currency(
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
         MovimientoFinanciero.tipo == "egreso",
-    ).group_by("year", "month", MovimientoFinanciero.moneda).order_by("year", "month").all()
+    )
+    if date_from:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
+    if date_to:
+        q = q.filter(MovimientoFinanciero.fecha_movimiento <= date_to)
+
+    rows = q.group_by("year", "month", MovimientoFinanciero.moneda).order_by("year", "month").all()
 
     portfolio_map: dict[tuple, dict] = {}
     usd_rate = float(USD_TO_ARS_RATE)
@@ -382,7 +411,10 @@ def get_portfolio_by_currency(
             portfolio_map[key]["ARS"] += amount
 
     MONTH_NAMES_ES = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
-    sorted_keys = sorted(portfolio_map.keys())[-months:]
+    sorted_keys = sorted(portfolio_map.keys())
+    if not date_from and not date_to:
+        sorted_keys = sorted_keys[-6:]
+        
     return [
         {
             "month": f"{MONTH_NAMES_ES[k[1]-1]} {k[0]}",

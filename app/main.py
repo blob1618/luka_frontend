@@ -137,7 +137,7 @@ async def dashboard(
     budgets = get_budgets_with_usage(db, user.id, d_from, d_to)
 
     # ── KPIs ──────────────────────────────────────────────────────────
-    patrimonio = get_patrimonio_neto(db, user.id)
+    patrimonio = get_patrimonio_neto(db, user.id, d_from, d_to)
     consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
     dias_racha = get_dias_racha(db, user.id)          # TODO: lógica real pendiente
 
@@ -174,31 +174,37 @@ async def api_graficos_distribucion(
 
 @app.get("/api/graficos/cartera")
 async def api_graficos_cartera(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    return get_portfolio_by_currency(db, user.id)
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
+    return get_portfolio_by_currency(db, user.id, d_from, d_to)
 
 @app.get("/api/graficos/flujo")
 async def api_graficos_flujo(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     whatsapp_id: str = Depends(get_current_user),
 ):
     user = get_user(db, whatsapp_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
-    return get_monthly_flow(db, user.id)
+    d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
+    return get_monthly_flow(db, user.id, d_from, d_to)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HTMX partials (update only parts of the page without a full reload)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/partials/stats", response_class=HTMLResponse)
-async def partial_stats(
+@app.get("/dashboard/actualizar", response_class=HTMLResponse)
+async def dashboard_actualizar(
     request: Request,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
@@ -211,16 +217,21 @@ async def partial_stats(
     
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
     stats = get_summary_stats(db, user.id, d_from, d_to)
-    patrimonio = get_patrimonio_neto(db, user.id)
+    patrimonio = get_patrimonio_neto(db, user.id, d_from, d_to)
     consumo = get_consumo_presupuesto(db, user.id, d_from, d_to)
     dias_racha = get_dias_racha(db, user.id)   # TODO: lógica real pendiente
-    return templates.TemplateResponse("partials/stats.html", {
+    
+    response = templates.TemplateResponse("partials/stats.html", {
         "request": request,
         "stats": stats,
         "patrimonio": patrimonio,
         "consumo": consumo,
         "dias_racha": dias_racha,
     })
+    
+    # Emitimos un evento a HTMX para que el frontend redibuje los gráficos y transacciones
+    response.headers["HX-Trigger"] = "actualizarGraficos"
+    return response
 
 
 @app.get("/partials/charts", response_class=HTMLResponse)
