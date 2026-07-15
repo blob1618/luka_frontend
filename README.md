@@ -11,6 +11,12 @@ Provee un dashboard visual interactivo y detallado, utilizando Jinja2, HTMX, y C
 - **Gráficos**: [Chart.js](https://www.chartjs.org/) para métricas dinámicas.
 - **Base de Datos**: PostgreSQL vía Supabase (reutilizando los datos guardados por el bot LUKA).
 
+## Contrato de base de datos compartido
+
+Las migraciones de la base compartida pertenecen a `blob1618/luka`. Este repositorio
+solo mantiene modelos SQLAlchemy consumidores compatibles; no debe usarse
+`Base.metadata.create_all()` para modificar la instancia compartida de Supabase.
+
 ## Estructura del Proyecto
 
 ```text
