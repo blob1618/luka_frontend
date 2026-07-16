@@ -26,6 +26,13 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 serializer = URLSafeTimedSerializer(SECRET_KEY)
 
 
+def mock_auth_enabled() -> bool:
+    """Keep development shortcuts unavailable outside explicit mock mode."""
+    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    enabled = os.getenv("ENABLE_MOCK_AUTH", "true").strip().lower() == "true"
+    return app_env == "development" and enabled
+
+
 # --- Session helpers ----------------------------------------------------------
 
 
@@ -51,7 +58,7 @@ def decode_magic_link_token(token: str) -> Optional[str]:
     For now, any non-empty token returns the MOCK_WHATSAPP_ID.
     Replace this with real JWT verification once the bot generates them.
     """
-    if token and len(token) > 4:
+    if mock_auth_enabled() and token and len(token) > 4:
         return MOCK_WHATSAPP_ID
     return None
 

@@ -1,11 +1,12 @@
 import csv
 import io
+import os
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,6 +17,7 @@ from app.auth import (
     create_session_token,
     decode_magic_link_token,
     get_current_user,
+    mock_auth_enabled,
 )
 from app.dashboard import (
     get_budgets_with_usage,
@@ -30,7 +32,27 @@ from app.dashboard import (
     get_summary_stats,
 )
 from app.models.database import get_db, MovimientoFinanciero, Categoria
-from app.services.onboarding import validate_registration_token
+from app.services.onboarding import (
+    RegistrationValidation,
+    validate_registration_context,
+    validate_registration_token,
+)
+from app.services.supabase_auth import (
+    ONBOARDING_COOKIE,
+    PENDING_AUTH_COOKIE,
+    PENDING_AUTH_MAX_AGE,
+    AuthConfigurationError,
+    CookieAuthStorage,
+    create_onboarding_context,
+    create_pending_auth_context,
+    create_supabase_auth_client,
+    cookie_secure_enabled,
+    delete_auth_cookie,
+    extract_verified_google_identity,
+    load_onboarding_context,
+    load_pending_auth_context,
+    set_private_cookie,
+)
 
 load_dotenv()
 
@@ -47,6 +69,40 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 
+def _secure_cookie_fallback() -> bool:
+    return os.getenv("APP_ENV", "development").strip().lower() == "production"
+
+
+def _auth_response(response):
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+def _auth_error(
+    request: Request,
+    message: str,
+    *,
+    status_code: int = 400,
+):
+    return _auth_response(
+        templates.TemplateResponse(
+            "auth_error.html",
+            {"request": request, "message": message},
+            status_code=status_code,
+        )
+    )
+
+
+def _clear_all_onboarding_cookies(response, *, secure: bool) -> None:
+    delete_auth_cookie(response, ONBOARDING_COOKIE, secure=secure)
+    _clear_google_auth_cookies(response, secure=secure)
+
+
+def _clear_google_auth_cookies(response, *, secure: bool) -> None:
+    delete_auth_cookie(response, PENDING_AUTH_COOKIE, secure=secure)
+    CookieAuthStorage.clear_known_cookies(response, secure=secure)
+
+
 @app.get("/registro", response_class=HTMLResponse)
 async def registration_page(
     request: Request,
@@ -54,10 +110,337 @@ async def registration_page(
     db: Session = Depends(get_db),
 ):
     registration = validate_registration_token(db, token)
-    return templates.TemplateResponse(
+    secure = _secure_cookie_fallback()
+    context_cookie = None
+    context_max_age = None
+    if registration.status == "valid":
+        try:
+            secure = cookie_secure_enabled()
+            context_cookie, context_max_age = create_onboarding_context(
+                registration.invitation_id,
+                registration.agreement_version_id,
+                registration.invitation_expires_at,
+            )
+        except (AuthConfigurationError, ValueError):
+            registration = RegistrationValidation(status="configuration_error")
+
+    response = templates.TemplateResponse(
         "registro.html",
         {"request": request, "registration": registration},
     )
+    if context_cookie and context_max_age:
+        set_private_cookie(
+            response,
+            ONBOARDING_COOKIE,
+            context_cookie,
+            max_age=context_max_age,
+            secure=secure,
+        )
+        delete_auth_cookie(response, PENDING_AUTH_COOKIE, secure=secure)
+        CookieAuthStorage.clear_known_cookies(response, secure=secure)
+    else:
+        _clear_all_onboarding_cookies(response, secure=secure)
+    return _auth_response(response)
+
+
+@app.post("/auth/google")
+async def start_google_auth(
+    request: Request,
+    terms_accepted: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        context = load_onboarding_context(request)
+    except AuthConfigurationError:
+        return _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+    if context is None:
+        response = _auth_error(
+            request,
+            "Tu sesión de registro venció. Volvé a abrir el enlace de WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if terms_accepted != "accepted":
+        return _auth_error(
+            request,
+            "Debés aceptar los términos y la política de privacidad para continuar.",
+        )
+
+    registration = validate_registration_context(
+        db,
+        context.invitation_id,
+        context.agreement_version_id,
+    )
+    if registration.status == "expired":
+        response = _auth_error(
+            request,
+            "El enlace venció antes de iniciar Google. Solicitá uno nuevo por WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if registration.status == "terms_unavailable":
+        response = _auth_error(
+            request,
+            "Los términos cambiaron. Volvé a abrir el enlace de registro para revisarlos.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if registration.status != "valid":
+        response = _auth_error(
+            request,
+            "No pudimos validar tu registro. Solicitá un nuevo enlace por WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    supabase_auth = None
+    try:
+        supabase_auth = create_supabase_auth_client(request)
+        oauth = supabase_auth.client.auth.sign_in_with_oauth(
+            {
+                "provider": "google",
+                "options": {"redirect_to": supabase_auth.settings.callback_url},
+            }
+        )
+        if not getattr(oauth, "url", None):
+            raise ValueError("Missing OAuth redirect URL")
+        response = RedirectResponse(url=oauth.url, status_code=303)
+        supabase_auth.apply_cookies(response)
+        return _auth_response(response)
+    except AuthConfigurationError:
+        response = _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+        _clear_google_auth_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    except Exception:
+        return _auth_error(
+            request,
+            "No pudimos iniciar Google. Intentá nuevamente en unos minutos.",
+            status_code=502,
+        )
+    finally:
+        if supabase_auth is not None:
+            supabase_auth.close()
+
+
+@app.get("/auth/callback")
+async def google_auth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    if error:
+        message = (
+            "La autenticación con Google fue cancelada. Intentá nuevamente."
+            if error == "access_denied"
+            else "Google no pudo completar la autenticación. Intentá nuevamente."
+        )
+        response = _auth_error(request, message)
+        _clear_google_auth_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if not code or len(code) > 4096:
+        response = _auth_error(
+            request,
+            "No recibimos una respuesta válida de Google. Intentá nuevamente.",
+        )
+        _clear_google_auth_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    try:
+        context = load_onboarding_context(request)
+    except AuthConfigurationError:
+        return _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+    if context is None:
+        response = _auth_error(
+            request,
+            "Tu sesión de registro venció. Volvé a abrir el enlace de WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    registration = validate_registration_context(
+        db,
+        context.invitation_id,
+        context.agreement_version_id,
+    )
+    if registration.status == "expired":
+        response = _auth_error(
+            request,
+            "El enlace venció durante Google OAuth. Solicitá uno nuevo por WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if registration.status != "valid":
+        response = _auth_error(
+            request,
+            "Tu sesión de registro ya no es válida. Volvé a abrir el enlace.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    has_pkce_cookie = any(
+        name == "luka_sb_pkce" or name.startswith("luka_sb_pkce.")
+        for name in request.cookies
+    )
+    if not has_pkce_cookie:
+        response = _auth_error(
+            request,
+            "Tu sesión con Google venció. Volvé a iniciar la autenticación.",
+        )
+        _clear_google_auth_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    supabase_auth = None
+    try:
+        supabase_auth = create_supabase_auth_client(request)
+        exchange = supabase_auth.client.auth.exchange_code_for_session(
+            {"auth_code": code}
+        )
+        session = getattr(exchange, "session", None)
+        access_token = getattr(session, "access_token", None)
+        if not access_token:
+            raise ValueError("Missing exchanged session")
+        verified_user = supabase_auth.client.auth.get_user(access_token)
+        identity = extract_verified_google_identity(verified_user)
+
+        response = RedirectResponse(url="/registro/continuar", status_code=303)
+        pending_cookie = create_pending_auth_context(identity, context.raw_cookie)
+        set_private_cookie(
+            response,
+            PENDING_AUTH_COOKIE,
+            pending_cookie,
+            max_age=PENDING_AUTH_MAX_AGE,
+            secure=supabase_auth.settings.cookie_secure,
+        )
+        supabase_auth.apply_cookies(response)
+        return _auth_response(response)
+    except AuthConfigurationError:
+        response = _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+        _clear_google_auth_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    except Exception:
+        response = _auth_error(
+            request,
+            "No pudimos validar la sesión de Google. Iniciá la autenticación nuevamente.",
+        )
+        secure = (
+            supabase_auth.settings.cookie_secure
+            if supabase_auth is not None
+            else _secure_cookie_fallback()
+        )
+        delete_auth_cookie(response, PENDING_AUTH_COOKIE, secure=secure)
+        CookieAuthStorage.clear_known_cookies(response, secure=secure)
+        return response
+    finally:
+        if supabase_auth is not None:
+            supabase_auth.close()
+
+
+@app.get("/registro/continuar", response_class=HTMLResponse)
+async def continue_registration(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    try:
+        context = load_onboarding_context(request)
+        identity = (
+            load_pending_auth_context(request, context.raw_cookie) if context else None
+        )
+    except AuthConfigurationError:
+        return _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+    if context is None or identity is None:
+        return _auth_error(
+            request,
+            "Tu sesión de registro venció. Volvé a iniciar desde el enlace de WhatsApp.",
+        )
+
+    registration = validate_registration_context(
+        db,
+        context.invitation_id,
+        context.agreement_version_id,
+    )
+    if registration.status == "expired":
+        response = _auth_error(
+            request,
+            "El enlace venció durante Google OAuth. Solicitá uno nuevo por WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+    if registration.status != "valid":
+        response = _auth_error(
+            request,
+            "El registro ya no está disponible. Volvé a abrir el enlace de WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    response = templates.TemplateResponse(
+        "registro_continuar.html",
+        {"request": request, "email": identity.email},
+    )
+    return _auth_response(response)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,15 +465,19 @@ async def login_page(request: Request, token: Optional[str] = None):
                 max_age=60 * 60 * 24 * 7,
                 samesite="lax",
             )
-            return response
-    return templates.TemplateResponse(
-        "login.html", {"request": request, "error": bool(token)}
+            return _auth_response(response)
+    return _auth_response(
+        templates.TemplateResponse(
+            "login.html", {"request": request, "error": bool(token)}
+        )
     )
 
 
 @app.get("/dev-login", response_class=RedirectResponse)
-async def dev_login():
+async def dev_login(request: Request):
     """Shortcut for local development — bypass WhatsApp entirely."""
+    if not mock_auth_enabled():
+        return _auth_error(request, "Ruta no disponible.", status_code=404)
     response = RedirectResponse(url="/", status_code=303)
     from app.auth import MOCK_WHATSAPP_ID
 
@@ -101,14 +488,14 @@ async def dev_login():
         max_age=60 * 60 * 24 * 7,
         samesite="lax",
     )
-    return response
+    return _auth_response(response)
 
 
 @app.get("/logout")
 async def logout():
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie(SESSION_COOKIE)
-    return response
+    return _auth_response(response)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

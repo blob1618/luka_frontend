@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>LUKA · Autenticación</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/registro.css" />
+</head>
+<body class="registration-body">
+  <main class="registration-container">
+    <section class="registration-card" aria-labelledby="auth-error-title">
+      <header class="registration-brand">
+        <div class="registration-logo">
+          {% include 'components/icons/logo_login.svg' %}
+        </div>
+        <span class="registration-brand-name">LUKA</span>
+      </header>
+      <div class="registration-state" role="alert">
+        <div class="registration-state-icon" aria-hidden="true">!</div>
+        <h1 id="auth-error-title">No pudimos continuar</h1>
+        <p>{{ message }}</p>
+        <button class="google-button registration-back" type="button" onclick="history.back()">
+          Volver e intentar nuevamente
+        </button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
