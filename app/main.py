@@ -30,6 +30,7 @@ from app.dashboard import (
     get_summary_stats,
 )
 from app.models.database import get_db, MovimientoFinanciero, Categoria
+from app.services.onboarding import validate_registration_token
 
 load_dotenv()
 
@@ -44,6 +45,19 @@ app = FastAPI(title="LUKA Dashboard", docs_url=None, redoc_url=None, lifespan=li
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
+
+
+@app.get("/registro", response_class=HTMLResponse)
+async def registration_page(
+    request: Request,
+    token: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    registration = validate_registration_token(db, token)
+    return templates.TemplateResponse(
+        "registro.html",
+        {"request": request, "registration": registration},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

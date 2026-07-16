@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="description" content="Registro seguro de cuenta LUKA." />
+  <title>LUKA · Registro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/registro.css" />
+</head>
+<body class="registration-body">
+  <div class="registration-bg" aria-hidden="true">
+    <div class="registration-orb registration-orb--primary"></div>
+    <div class="registration-orb registration-orb--violet"></div>
+  </div>
+
+  <main class="registration-container">
+    <section class="registration-card" aria-labelledby="registration-title">
+      <header class="registration-brand">
+        <div class="registration-logo">
+          {% include 'components/icons/logo_login.svg' %}
+        </div>
+        <span class="registration-brand-name">LUKA</span>
+      </header>
+
+      {% if registration.status == "valid" %}
+        <div class="registration-heading">
+          <p class="registration-eyebrow">Creá tu acceso seguro</p>
+          <h1 id="registration-title">Registrá tu cuenta</h1>
+          <p>
+            Vamos a vincular tu cuenta con el WhatsApp desde el cual recibiste
+            este enlace.
+          </p>
+        </div>
+
+        <div class="terms-meta">
+          <span>Términos y privacidad</span>
+          <strong>Versión {{ registration.agreement_version }}</strong>
+          {% if registration.agreement_effective_from %}
+            <span>
+              Vigente desde
+              {{ registration.agreement_effective_from.strftime("%d/%m/%Y") }}
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="terms-panel" tabindex="0" aria-label="Términos y política de privacidad">
+          {{ registration.agreement_content }}
+        </div>
+
+        <label class="terms-acceptance" for="terms-accepted">
+          <input id="terms-accepted" type="checkbox" required />
+          <span class="terms-checkmark" aria-hidden="true"></span>
+          <span>Leí y acepto los términos y la política de privacidad.</span>
+        </label>
+
+        <button class="google-button" id="google-button" type="button" disabled>
+          Continuar con Google
+        </button>
+        <p class="registration-notice" id="google-notice" role="status" aria-live="polite" hidden>
+          El acceso con Google todavía no está habilitado.
+        </p>
+      {% else %}
+        <div class="registration-state" role="alert">
+          <div class="registration-state-icon" aria-hidden="true">!</div>
+          <h1 id="registration-title">
+            {% if registration.status == "terms_unavailable" %}
+              Registro temporalmente no disponible
+            {% elif registration.status == "consumed" %}
+              Enlace ya utilizado
+            {% elif registration.status == "expired" %}
+              Enlace vencido
+            {% elif registration.status == "error" %}
+              No pudimos verificar el enlace
+            {% else %}
+              Enlace inválido
+            {% endif %}
+          </h1>
+          <p>
+            {% if registration.status == "terms_unavailable" %}
+              El registro no está disponible temporalmente porque los términos todavía no fueron publicados.
+            {% elif registration.status == "consumed" %}
+              Este enlace ya fue utilizado. Iniciá sesión para continuar.
+            {% elif registration.status == "expired" %}
+              Este enlace venció. Escribile nuevamente a Luka para recibir otro.
+            {% elif registration.status == "error" %}
+              No pudimos verificar el enlace. Intentá nuevamente en unos minutos.
+            {% else %}
+              Este enlace de registro no es válido. Solicitá uno nuevo desde WhatsApp.
+            {% endif %}
+          </p>
+        </div>
+      {% endif %}
+    </section>
+  </main>
+
+  {% if registration.status == "valid" %}
+    <script>
+      const termsAccepted = document.getElementById('terms-accepted');
+      const googleButton = document.getElementById('google-button');
+      const googleNotice = document.getElementById('google-notice');
+
+      termsAccepted.addEventListener('change', () => {
+        googleButton.disabled = !termsAccepted.checked;
+        googleNotice.hidden = true;
+      });
+
+      googleButton.addEventListener('click', () => {
+        if (!googleButton.disabled) {
+          googleNotice.hidden = false;
+          googleNotice.focus();
+        }
+      });
+    </script>
+  {% endif %}
+</body>
+</html>
