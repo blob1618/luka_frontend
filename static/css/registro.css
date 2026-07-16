@@ -255,6 +255,23 @@
   font-weight: 800;
 }
 
+.registration-state-icon--success {
+  border-color: rgba(34, 197, 94, .45);
+  background: rgba(34, 197, 94, .12);
+  color: #86efac;
+}
+
+.registration-success .verified-email {
+  margin-bottom: 12px;
+  color: #c7d2fe;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.registration-back {
+  margin-top: 20px;
+}
+
 @media (min-width: 480px) {
   .registration-container {
     padding: 28px;

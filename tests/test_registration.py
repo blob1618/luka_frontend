@@ -133,7 +133,9 @@ def test_pending_unexpired_invitation_shows_valid_registration(
 
     assert "Registrá tu cuenta" in response.text
     assert "Leí y acepto los términos" in response.text
-    assert 'id="google-button" type="button" disabled' in response.text
+    assert '<form method="post" action="/auth/google">' in response.text
+    assert 'name="terms_accepted"' in response.text
+    assert 'id="google-button" type="submit" disabled' in response.text
 
 
 def test_pending_expired_invitation_shows_expired(client, registration_db):

@@ -52,23 +52,30 @@
           {{ registration.agreement_content }}
         </div>
 
-        <label class="terms-acceptance" for="terms-accepted">
-          <input id="terms-accepted" type="checkbox" required />
-          <span class="terms-checkmark" aria-hidden="true"></span>
-          <span>Leí y acepto los términos y la política de privacidad.</span>
-        </label>
+        <form method="post" action="/auth/google">
+          <label class="terms-acceptance" for="terms-accepted">
+            <input
+              id="terms-accepted"
+              name="terms_accepted"
+              value="accepted"
+              type="checkbox"
+              required
+            />
+            <span class="terms-checkmark" aria-hidden="true"></span>
+            <span>Leí y acepto los términos y la política de privacidad.</span>
+          </label>
 
-        <button class="google-button" id="google-button" type="button" disabled>
-          Continuar con Google
-        </button>
-        <p class="registration-notice" id="google-notice" role="status" aria-live="polite" hidden>
-          El acceso con Google todavía no está habilitado.
-        </p>
+          <button class="google-button" id="google-button" type="submit" disabled>
+            Continuar con Google
+          </button>
+        </form>
       {% else %}
         <div class="registration-state" role="alert">
           <div class="registration-state-icon" aria-hidden="true">!</div>
           <h1 id="registration-title">
             {% if registration.status == "terms_unavailable" %}
+              Registro temporalmente no disponible
+            {% elif registration.status == "configuration_error" %}
               Registro temporalmente no disponible
             {% elif registration.status == "consumed" %}
               Enlace ya utilizado
@@ -83,6 +90,8 @@
           <p>
             {% if registration.status == "terms_unavailable" %}
               El registro no está disponible temporalmente porque los términos todavía no fueron publicados.
+            {% elif registration.status == "configuration_error" %}
+              La autenticación no está disponible temporalmente. Intentá nuevamente más tarde.
             {% elif registration.status == "consumed" %}
               Este enlace ya fue utilizado. Iniciá sesión para continuar.
             {% elif registration.status == "expired" %}
@@ -102,18 +111,9 @@
     <script>
       const termsAccepted = document.getElementById('terms-accepted');
       const googleButton = document.getElementById('google-button');
-      const googleNotice = document.getElementById('google-notice');
 
       termsAccepted.addEventListener('change', () => {
         googleButton.disabled = !termsAccepted.checked;
-        googleNotice.hidden = true;
-      });
-
-      googleButton.addEventListener('click', () => {
-        if (!googleButton.disabled) {
-          googleNotice.hidden = false;
-          googleNotice.focus();
-        }
       });
     </script>
   {% endif %}

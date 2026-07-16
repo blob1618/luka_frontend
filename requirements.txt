@@ -7,3 +7,4 @@ psycopg[binary]==3.3.4
 python-jose[cryptography]==3.3.0
 itsdangerous==2.2.0
 python-dotenv==1.0.1
+supabase==2.31.0

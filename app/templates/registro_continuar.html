@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>LUKA · Google verificado</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/registro.css" />
+</head>
+<body class="registration-body">
+  <main class="registration-container">
+    <section class="registration-card" aria-labelledby="registration-title">
+      <header class="registration-brand">
+        <div class="registration-logo">
+          {% include 'components/icons/logo_login.svg' %}
+        </div>
+        <span class="registration-brand-name">LUKA</span>
+      </header>
+      <div class="registration-state registration-success" role="status">
+        <div class="registration-state-icon registration-state-icon--success" aria-hidden="true">✓</div>
+        <h1 id="registration-title">Tu cuenta de Google fue verificada correctamente.</h1>
+        <p class="verified-email">{{ email }}</p>
+        <p>La vinculación con WhatsApp se completará en el siguiente paso.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
