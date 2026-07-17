@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>LUKA · Google verificado</title>
+  <title>LUKA · Finalizar registro</title>
   <link rel="stylesheet" href="/static/css/style.css" />
   <link rel="stylesheet" href="/static/css/registro.css" />
 </head>
@@ -21,9 +21,24 @@
         <div class="registration-state-icon registration-state-icon--success" aria-hidden="true">✓</div>
         <h1 id="registration-title">Tu cuenta de Google fue verificada correctamente.</h1>
         <p class="verified-email">{{ email }}</p>
-        <p>La vinculación con WhatsApp se completará en el siguiente paso.</p>
+        <p>Al finalizar, vincularemos esta cuenta con el WhatsApp desde el que recibiste la invitación.</p>
+        <form id="finalize-registration-form" method="post" action="/registro/finalizar">
+          <button class="google-button registration-back" id="finalize-registration-button" type="submit">
+            Finalizar registro
+          </button>
+        </form>
       </div>
     </section>
   </main>
+  <script>
+    const finalizeForm = document.getElementById('finalize-registration-form');
+    const finalizeButton = document.getElementById('finalize-registration-button');
+
+    finalizeForm.addEventListener('submit', () => {
+      finalizeButton.disabled = true;
+      finalizeButton.setAttribute('aria-disabled', 'true');
+      finalizeButton.textContent = 'Finalizando…';
+    });
+  </script>
 </body>
 </html>
