@@ -1,12 +1,16 @@
 import hashlib
+import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+import itsdangerous.timed
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
+from supabase_auth.errors import AuthInvalidJwtError
 
 from app.main import app
 from app.models.database import (
@@ -57,25 +61,39 @@ class FakeSupabaseAuth:
             session=SimpleNamespace(access_token="access-secret")
         )
 
-    def get_user(self, access_token):
+    def get_user(self, access_token=None):
         self.recorder["get_user_token"] = access_token
+        self.recorder["sql_seen_before_get_user"] = self.recorder.get(
+            "sql_seen", False
+        )
+        if self.recorder.get("user_exception") is not None:
+            raise self.recorder["user_exception"]
         if self.recorder.get("user_error"):
             raise ValueError("invalid authenticated user")
         user = SimpleNamespace(
-            id="76aecc76-0e88-4bae-a08f-c3c3297ed20a",
-            email="persona@example.com",
-            email_confirmed_at="2026-07-16T12:00:00Z",
+            id=self.recorder.get(
+                "auth_user_id", "76aecc76-0e88-4bae-a08f-c3c3297ed20a"
+            ),
+            email=self.recorder.get("email", "persona@example.com"),
+            email_confirmed_at=self.recorder.get(
+                "email_confirmed_at", "2026-07-16T12:00:00Z"
+            ),
             confirmed_at=None,
-            identities=[
-                SimpleNamespace(
-                    provider=self.recorder.get("identity_provider", "google")
-                )
-            ],
+            identities=self.recorder.get(
+                "identities",
+                [
+                    SimpleNamespace(
+                        provider=self.recorder.get("identity_provider", "google")
+                    )
+                ],
+            ),
             app_metadata={
                 "provider": self.recorder.get("metadata_provider", "google"),
                 "providers": ["google"],
             },
-            user_metadata={"provider": "google"},
+            user_metadata=self.recorder.get(
+                "user_metadata", {"provider": "google", "full_name": "Persona Google"}
+            ),
         )
         return SimpleNamespace(user=user)
 
@@ -479,7 +497,9 @@ def test_continue_shows_only_safe_google_identity(client, auth_db):
 
     assert response.status_code == 200
     assert "Tu cuenta de Google fue verificada correctamente." in response.text
-    assert "La vinculación con WhatsApp se completará en el siguiente paso." in response.text
+    assert "vincularemos esta cuenta con el WhatsApp" in response.text
+    assert '<form id="finalize-registration-form" method="post" action="/registro/finalizar">' in response.text
+    assert "Finalizar registro" in response.text
     assert "persona@example.com" in response.text
     for secret in (
         invitation.whatsapp_id,
@@ -539,3 +559,349 @@ def test_mock_auth_can_remain_enabled_in_development(client):
     assert magic_login.status_code == 303
     assert "luka_session" in dev_login.headers["set-cookie"]
     assert "luka_session" in magic_login.headers["set-cookie"]
+
+
+def reach_finalization(client, db):
+    invitation, agreement, _ = begin_oauth(client, db)
+    callback = client.get(
+        "/auth/callback",
+        params={"code": "valid-code"},
+        follow_redirects=False,
+    )
+    assert callback.status_code == 303
+    return invitation, agreement
+
+
+def test_finalize_requires_onboarding_and_pending_context(client, auth_db):
+    missing_both = client.post("/registro/finalizar")
+    begin_registration(client, auth_db)
+    missing_pending = client.post("/registro/finalizar")
+
+    assert missing_both.status_code == 400
+    assert missing_pending.status_code == 400
+    assert "sesión de registro venció" in missing_pending.text
+
+
+def test_finalize_rejects_invalid_signed_context(client, auth_db):
+    reach_finalization(client, auth_db)
+    client.cookies.set(supabase_auth.ONBOARDING_COOKIE, "firma-invalida")
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 400
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_rejects_expired_signed_context(
+    client, auth_db, monkeypatch
+):
+    reach_finalization(client, auth_db)
+    current_time = itsdangerous.timed.time.time()
+    monkeypatch.setattr(
+        itsdangerous.timed.time,
+        "time",
+        lambda: current_time + supabase_auth.ONBOARDING_CONTEXT_MAX_AGE + 1,
+    )
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 400
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_requires_supabase_session_cookie(client, auth_db):
+    reach_finalization(client, auth_db)
+    for name in list(client.cookies.keys()):
+        if name.startswith(supabase_auth.SUPABASE_SESSION_COOKIE):
+            client.cookies.delete(name)
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 401
+    assert "sesión de Google venció" in response.text
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_handles_get_user_failure_without_database_changes(
+    client, auth_db, sdk
+):
+    reach_finalization(client, auth_db)
+    sdk["user_error"] = True
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 502
+    assert "error transitorio" in response.text
+    assert "invalid authenticated user" not in response.text
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_treats_invalid_supabase_session_as_terminal(
+    client, auth_db, sdk
+):
+    reach_finalization(client, auth_db)
+    sdk["user_exception"] = AuthInvalidJwtError(
+        "sensitive JWT detail that must not be exposed"
+    )
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 401
+    assert "sesión de Google venció" in response.text
+    assert "sensitive JWT detail" not in response.text
+    assert client.cookies.get(supabase_auth.ONBOARDING_COOKIE) is None
+    assert client.cookies.get(supabase_auth.PENDING_AUTH_COOKIE) is None
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_calls_get_user_before_sql_or_transaction(
+    client, auth_db, sdk, monkeypatch
+):
+    import app.main as main_module
+
+    reach_finalization(client, auth_db)
+    original_finalize = main_module.finalize_onboarding
+
+    def record_transaction_state(db, *args, **kwargs):
+        sdk["transaction_before_service"] = db.in_transaction()
+        return original_finalize(db, *args, **kwargs)
+
+    def record_sql(*_args):
+        sdk["sql_seen"] = True
+
+    monkeypatch.setattr(
+        main_module,
+        "finalize_onboarding",
+        record_transaction_state,
+    )
+    event.listen(auth_db.get_bind(), "before_cursor_execute", record_sql)
+    sdk["sql_seen"] = False
+    try:
+        response = client.post("/registro/finalizar")
+    finally:
+        event.remove(auth_db.get_bind(), "before_cursor_execute", record_sql)
+
+    assert response.status_code == 200
+    assert sdk["sql_seen_before_get_user"] is False
+    assert sdk["transaction_before_service"] is False
+    assert sdk["sql_seen"] is True
+
+
+@pytest.mark.parametrize(
+    ("sdk_change", "expected_message"),
+    [
+        ({"auth_user_id": "no-es-uuid"}, "identidad de Google ya no es válida"),
+        (
+            {"identity_provider": "github", "metadata_provider": "github"},
+            "identidad de Google ya no es válida",
+        ),
+        ({"identities": []}, "identidad de Google ya no es válida"),
+        ({"email_confirmed_at": None}, "identidad de Google ya no es válida"),
+        (
+            {"email": "otra-persona@example.com"},
+            "identidad de Google cambió durante el registro",
+        ),
+    ],
+)
+def test_finalize_revalidates_and_compares_fresh_google_identity(
+    client,
+    auth_db,
+    sdk,
+    sdk_change,
+    expected_message,
+):
+    reach_finalization(client, auth_db)
+    sdk.update(sdk_change)
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code in {401, 409}
+    assert expected_message in response.text
+    assert auth_db.query(Usuario).count() == 0
+    assert auth_db.query(AcuerdoAceptado).count() == 0
+
+
+def test_finalize_success_revalidates_without_browser_identity_fields(
+    client, auth_db, sdk
+):
+    invitation, agreement = reach_finalization(client, auth_db)
+    token_hash = invitation.token_hash
+
+    response = client.post("/registro/finalizar")
+
+    auth_db.expire_all()
+    user = auth_db.query(Usuario).one()
+    acceptance = auth_db.query(AcuerdoAceptado).one()
+    stored_invitation = auth_db.get(OnboardingInvitacion, invitation.id)
+    assert response.status_code == 200
+    assert "Tu registro se completó correctamente." in response.text
+    assert "Ya podés volver a WhatsApp y comenzar a usar Luka." in response.text
+    assert sdk["get_user_token"] is None
+    assert user.email == "persona@example.com"
+    assert user.nombre == "Persona Google"
+    assert str(user.auth_user_id) == "76aecc76-0e88-4bae-a08f-c3c3297ed20a"
+    assert user.whatsapp_id == invitation.whatsapp_id
+    assert acceptance.usuario_id == user.id
+    assert acceptance.version_acuerdo_id == agreement.id
+    assert stored_invitation.estado == "consumida"
+    assert stored_invitation.token_hash == token_hash
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_finalize_uses_safe_name_fallback(client, auth_db, sdk):
+    reach_finalization(client, auth_db)
+    sdk["user_metadata"] = {"full_name": "\x00\n"}
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 200
+    assert auth_db.query(Usuario).one().nombre == "persona"
+
+
+def test_finalize_success_clears_every_temporary_cookie_and_not_dashboard_session(
+    client, auth_db
+):
+    reach_finalization(client, auth_db)
+
+    response = client.post("/registro/finalizar")
+
+    for name in client.cookies.keys():
+        assert name not in {
+            supabase_auth.ONBOARDING_COOKIE,
+            supabase_auth.PENDING_AUTH_COOKIE,
+        }
+        assert not name.startswith(supabase_auth.SUPABASE_PKCE_COOKIE)
+        assert not name.startswith(supabase_auth.SUPABASE_SESSION_COOKIE)
+    temporary_cookie_headers = [
+        header
+        for header in response.headers.get_list("set-cookie")
+        if "luka_onboarding=" in header
+        or "luka_pending_google=" in header
+        or "luka_sb_pkce" in header
+        or "luka_sb_session" in header
+    ]
+    assert temporary_cookie_headers
+    assert all("Max-Age=0" in header for header in temporary_cookie_headers)
+    assert "luka_session" not in response.headers.get("set-cookie", "")
+
+
+@pytest.mark.parametrize("terminal_state", ["vencida", "consumida"])
+def test_finalize_rejects_terminal_invitation_and_clears_context(
+    client, auth_db, terminal_state
+):
+    invitation, _ = reach_finalization(client, auth_db)
+    if terminal_state == "consumida":
+        user = Usuario(nombre="Existente", email="existente@example.com")
+        auth_db.add(user)
+        auth_db.flush()
+        invitation.usuario_id = user.id
+        invitation.consumida_en = datetime.now(timezone.utc)
+    invitation.estado = terminal_state
+    auth_db.commit()
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code in {409, 410}
+    assert client.cookies.get(supabase_auth.ONBOARDING_COOKIE) is None
+    assert auth_db.query(AcuerdoAceptado).count() == 0
+
+
+def test_finalize_rejects_changed_terms(client, auth_db):
+    _, agreement = reach_finalization(client, auth_db)
+    agreement.esta_vigente = False
+    auth_db.commit()
+
+    response = client.post("/registro/finalizar")
+
+    assert response.status_code == 409
+    assert "términos cambiaron" in response.text
+    assert auth_db.query(Usuario).count() == 0
+
+
+def test_finalize_identity_conflict_is_generic_and_atomic(client, auth_db):
+    invitation, _ = reach_finalization(client, auth_db)
+    conflicting_user = Usuario(
+        nombre="Otra persona",
+        email="persona@example.com",
+        auth_user_id=uuid.UUID("c9277fba-17e1-4f7f-a19c-6dac97f84168"),
+    )
+    auth_db.add(conflicting_user)
+    auth_db.commit()
+
+    response = client.post("/registro/finalizar")
+
+    auth_db.refresh(invitation)
+    assert response.status_code == 409
+    assert "algunos datos ya están asociados a otra identidad" in response.text
+    assert "persona@example.com" not in response.text
+    assert invitation.whatsapp_id not in response.text
+    assert str(conflicting_user.auth_user_id) not in response.text
+    assert invitation.estado == "pendiente"
+    assert auth_db.query(AcuerdoAceptado).count() == 0
+
+
+def test_integrity_error_response_hides_sql_and_constraint_names(
+    client, auth_db
+):
+    invitation, _ = reach_finalization(client, auth_db)
+    private_constraint = "uq_private_auth_user_id_constraint"
+
+    def fail_acceptance_insert(
+        _connection,
+        _cursor,
+        statement,
+        parameters,
+        _context,
+        _executemany,
+    ):
+        if "insert into acuerdo_aceptado" in statement.lower():
+            raise IntegrityError(
+                statement,
+                parameters,
+                Exception(private_constraint),
+            )
+
+    event.listen(
+        auth_db.get_bind(),
+        "before_cursor_execute",
+        fail_acceptance_insert,
+    )
+    try:
+        response = client.post("/registro/finalizar")
+    finally:
+        event.remove(
+            auth_db.get_bind(),
+            "before_cursor_execute",
+            fail_acceptance_insert,
+        )
+
+    auth_db.expire_all()
+    stored_invitation = auth_db.get(OnboardingInvitacion, invitation.id)
+    assert response.status_code == 409
+    assert "algunos datos ya están asociados a otra identidad" in response.text
+    assert private_constraint not in response.text
+    assert "INSERT INTO" not in response.text
+    assert auth_db.query(Usuario).count() == 0
+    assert auth_db.query(AcuerdoAceptado).count() == 0
+    assert stored_invitation.estado == "pendiente"
+
+
+def test_finalize_interface_blocks_double_submit_and_exposes_no_identifiers(
+    client, auth_db
+):
+    invitation, agreement = reach_finalization(client, auth_db)
+
+    response = client.get("/registro/continuar")
+
+    assert 'method="post" action="/registro/finalizar"' in response.text
+    assert "finalizeButton.disabled = true" in response.text
+    assert "access_token" not in response.text
+    assert "refresh_token" not in response.text
+    for value in (
+        invitation.whatsapp_id,
+        invitation.token_hash,
+        str(invitation.id),
+        str(agreement.id),
+        "76aecc76-0e88-4bae-a08f-c3c3297ed20a",
+    ):
+        assert value not in response.text

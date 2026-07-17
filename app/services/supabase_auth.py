@@ -15,6 +15,12 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.responses import Response
 from supabase import ClientOptions, create_client
 from supabase_auth import SyncSupportedStorage
+from supabase_auth.errors import (
+    AuthApiError,
+    AuthInvalidCredentialsError,
+    AuthInvalidJwtError,
+    AuthSessionMissingError,
+)
 
 
 ONBOARDING_COOKIE = "luka_onboarding"
@@ -37,6 +43,24 @@ _PLACEHOLDER_SECRET = "change-me-to-a-random-secret-in-production"
 
 class AuthConfigurationError(RuntimeError):
     """Raised for invalid auth configuration without exposing its contents."""
+
+
+class AuthenticatedIdentityError(ValueError):
+    """Raised when Supabase does not return the required verified Google identity."""
+
+
+def is_terminal_auth_session_error(error: Exception) -> bool:
+    """Return whether retrying with the same Supabase session cannot succeed."""
+    if isinstance(
+        error,
+        (
+            AuthInvalidCredentialsError,
+            AuthInvalidJwtError,
+            AuthSessionMissingError,
+        ),
+    ):
+        return True
+    return isinstance(error, AuthApiError) and error.status in {400, 401, 403}
 
 
 @dataclass(frozen=True)
@@ -338,6 +362,9 @@ class CookieAuthStorage(SyncSupportedStorage):
         for index in range(_MAX_COOKIE_CHUNKS):
             self._pending[f"{base_name}.{index}"] = None
 
+    def has_session(self) -> bool:
+        return self.get_item("supabase-auth-session") is not None
+
     def apply(self, response: Response) -> None:
         for name, value in self._pending.items():
             if value is None:
@@ -410,17 +437,15 @@ def create_supabase_auth_client(request: Request) -> RequestSupabaseAuth:
 def extract_verified_google_identity(user_response: Any) -> PendingGoogleIdentity:
     user = getattr(user_response, "user", None)
     if user is None:
-        raise ValueError("Missing authenticated user")
+        raise AuthenticatedIdentityError("Missing authenticated user")
 
     raw_auth_user_id = getattr(user, "id", None)
     try:
         auth_user_id = str(uuid.UUID(str(raw_auth_user_id)))
     except (TypeError, ValueError, AttributeError) as exc:
-        raise ValueError("Authenticated user id is not a UUID") from exc
+        raise AuthenticatedIdentityError("Authenticated user id is not a UUID") from exc
     email = getattr(user, "email", None)
-    email_confirmed_at = getattr(user, "email_confirmed_at", None) or getattr(
-        user, "confirmed_at", None
-    )
+    email_confirmed_at = getattr(user, "email_confirmed_at", None)
     identities = getattr(user, "identities", None) or []
     identity_providers = {
         getattr(identity, "provider", None)
@@ -431,19 +456,32 @@ def extract_verified_google_identity(user_response: Any) -> PendingGoogleIdentit
     app_metadata = getattr(user, "app_metadata", None) or {}
     metadata_provider = app_metadata.get("provider")
     is_google = metadata_provider == "google" and "google" in identity_providers
+    normalized_email = email.strip().lower() if isinstance(email, str) else ""
     valid_email = (
-        isinstance(email, str)
-        and email == email.strip()
-        and 3 <= len(email) <= 320
-        and "@" in email
-        and not any(character in email for character in "\r\n\0")
+        3 <= len(normalized_email) <= 320
+        and normalized_email.count("@") == 1
+        and not any(character in normalized_email for character in "\r\n\0")
     )
+    if valid_email:
+        local_part, domain = normalized_email.split("@", 1)
+        valid_email = bool(local_part and domain)
     if not valid_email or not email_confirmed_at or not is_google:
-        raise ValueError("Authenticated identity is not a verified Google user")
+        raise AuthenticatedIdentityError(
+            "Authenticated identity is not a verified Google user"
+        )
 
     return PendingGoogleIdentity(
         auth_user_id=auth_user_id,
         provider="google",
-        email=email,
+        email=normalized_email,
         authenticated_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+def extract_google_profile_name(user_response: Any) -> object:
+    """Return profile-only metadata; callers must not use it for authorization."""
+    user = getattr(user_response, "user", None)
+    metadata = getattr(user, "user_metadata", None) if user is not None else None
+    if not isinstance(metadata, Mapping):
+        return None
+    return metadata.get("full_name") or metadata.get("name")

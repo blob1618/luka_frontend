@@ -37,10 +37,16 @@ from app.services.onboarding import (
     validate_registration_context,
     validate_registration_token,
 )
+from app.services.onboarding_finalization import (
+    VerifiedIdentity,
+    finalize_onboarding,
+    normalize_display_name,
+)
 from app.services.supabase_auth import (
     ONBOARDING_COOKIE,
     PENDING_AUTH_COOKIE,
     PENDING_AUTH_MAX_AGE,
+    AuthenticatedIdentityError,
     AuthConfigurationError,
     CookieAuthStorage,
     create_onboarding_context,
@@ -48,7 +54,9 @@ from app.services.supabase_auth import (
     create_supabase_auth_client,
     cookie_secure_enabled,
     delete_auth_cookie,
+    extract_google_profile_name,
     extract_verified_google_identity,
+    is_terminal_auth_session_error,
     load_onboarding_context,
     load_pending_auth_context,
     set_private_cookie,
@@ -441,6 +449,172 @@ async def continue_registration(
         {"request": request, "email": identity.email},
     )
     return _auth_response(response)
+
+
+@app.post("/registro/finalizar", response_class=HTMLResponse)
+async def finalize_registration(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    try:
+        context = load_onboarding_context(request)
+        pending_identity = (
+            load_pending_auth_context(request, context.raw_cookie) if context else None
+        )
+    except AuthConfigurationError:
+        return _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+
+    if context is None or pending_identity is None:
+        response = _auth_error(
+            request,
+            "Tu sesión de registro venció. Volvé a iniciar desde el enlace de WhatsApp.",
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=_secure_cookie_fallback(),
+        )
+        return response
+
+    try:
+        supabase_auth = create_supabase_auth_client(request)
+    except AuthConfigurationError:
+        return _auth_error(
+            request,
+            "La autenticación no está disponible temporalmente. Intentá más tarde.",
+            status_code=503,
+        )
+    except Exception:
+        return _auth_error(
+            request,
+            "No pudimos contactar a Supabase para revalidar tu sesión. Intentá nuevamente.",
+            status_code=502,
+        )
+
+    try:
+        if not supabase_auth.storage.has_session():
+            response = _auth_error(
+                request,
+                "Tu sesión de Google venció. Volvé a iniciar la autenticación.",
+                status_code=401,
+            )
+            _clear_all_onboarding_cookies(
+                response,
+                secure=supabase_auth.settings.cookie_secure,
+            )
+            return response
+        verified_user = supabase_auth.client.auth.get_user()
+        verified_identity = extract_verified_google_identity(verified_user)
+        profile_name = extract_google_profile_name(verified_user)
+        secure = supabase_auth.settings.cookie_secure
+    except AuthenticatedIdentityError:
+        response = _auth_error(
+            request,
+            "La identidad de Google ya no es válida. Volvé a iniciar el registro.",
+            status_code=401,
+        )
+        _clear_all_onboarding_cookies(
+            response,
+            secure=supabase_auth.settings.cookie_secure,
+        )
+        return response
+    except Exception as error:
+        if is_terminal_auth_session_error(error):
+            response = _auth_error(
+                request,
+                "Tu sesión de Google venció. Volvé a iniciar la autenticación.",
+                status_code=401,
+            )
+            _clear_all_onboarding_cookies(
+                response,
+                secure=supabase_auth.settings.cookie_secure,
+            )
+            return response
+        return _auth_error(
+            request,
+            "No pudimos revalidar Google por un error transitorio. Intentá nuevamente.",
+            status_code=502,
+        )
+    finally:
+        supabase_auth.close()
+
+    identity_matches = (
+        verified_identity.auth_user_id == pending_identity.auth_user_id
+        and verified_identity.provider == pending_identity.provider
+        and verified_identity.email.strip().lower()
+        == pending_identity.email.strip().lower()
+    )
+    if not identity_matches:
+        response = _auth_error(
+            request,
+            "La identidad de Google cambió durante el registro. No se realizó ningún cambio.",
+            status_code=409,
+        )
+        _clear_all_onboarding_cookies(response, secure=secure)
+        return response
+
+    result = finalize_onboarding(
+        db,
+        context.invitation_id,
+        context.agreement_version_id,
+        VerifiedIdentity(
+            auth_user_id=verified_identity.auth_user_id,
+            provider=verified_identity.provider,
+            email=verified_identity.email,
+        ),
+        normalize_display_name(profile_name, verified_identity.email),
+    )
+
+    if result.status == "success":
+        response = templates.TemplateResponse(
+            "registro_completado.html",
+            {"request": request},
+        )
+        _clear_all_onboarding_cookies(response, secure=secure)
+        return _auth_response(response)
+
+    messages = {
+        "invitation_expired": (
+            "El enlace de registro venció. Solicitá uno nuevo por WhatsApp.",
+            410,
+        ),
+        "invitation_consumed": (
+            "Este enlace de registro ya fue utilizado.",
+            409,
+        ),
+        "agreement_not_found": (
+            "Los términos cambiaron. Volvé a comenzar para leer y aceptar la nueva versión.",
+            409,
+        ),
+        "agreement_changed": (
+            "Los términos cambiaron. Volvé a comenzar para leer y aceptar la nueva versión.",
+            409,
+        ),
+        "identity_conflict": (
+            "No pudimos vincular la cuenta porque algunos datos ya están asociados a otra identidad. No se realizó ningún cambio.",
+            409,
+        ),
+    }
+    if result.status == "database_error":
+        return _auth_error(
+            request,
+            "No pudimos completar el registro por un error transitorio. Intentá nuevamente.",
+            status_code=503,
+        )
+
+    message, status_code = messages.get(
+        result.status,
+        (
+            "El registro ya no está disponible. Solicitá un nuevo enlace por WhatsApp.",
+            400,
+        ),
+    )
+    response = _auth_error(request, message, status_code=status_code)
+    _clear_all_onboarding_cookies(response, secure=secure)
+    return response
 
 
 # ─────────────────────────────────────────────────────────────────────────────
