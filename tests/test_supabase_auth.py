@@ -547,7 +547,10 @@ def test_mock_auth_is_disabled_in_production(monkeypatch, client):
     assert "luka_session" not in magic_login.headers.get("set-cookie", "")
 
 
-def test_mock_auth_can_remain_enabled_in_development(client):
+def test_dev_login_mock_shortcut_still_works_in_development(client):
+    """/dev-login stays a dev-only bypass; /login (STK-89) always does real
+    token verification now, even in development — an arbitrary string is
+    no longer accepted just because ENABLE_MOCK_AUTH=true."""
     dev_login = client.get("/dev-login", follow_redirects=False)
     magic_login = client.get(
         "/login",
@@ -556,9 +559,9 @@ def test_mock_auth_can_remain_enabled_in_development(client):
     )
 
     assert dev_login.status_code == 303
-    assert magic_login.status_code == 303
     assert "luka_session" in dev_login.headers["set-cookie"]
-    assert "luka_session" in magic_login.headers["set-cookie"]
+    assert magic_login.status_code == 200
+    assert "luka_session" not in magic_login.headers.get("set-cookie", "")
 
 
 def reach_finalization(client, db):

@@ -13,9 +13,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    MOCK_AUTH_USER_ID,
     SESSION_COOKIE,
+    consume_dashboard_login_token,
     create_session_token,
-    decode_magic_link_token,
     get_current_user,
     mock_auth_enabled,
 )
@@ -27,7 +28,7 @@ from app.dashboard import (
     get_monthly_flow,
     get_patrimonio_neto,
     get_portfolio_by_currency,
-    get_user,
+    get_user_by_auth_id,
     get_recent_transactions,
     get_summary_stats,
 )
@@ -623,18 +624,22 @@ async def finalize_registration(
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, token: Optional[str] = None):
+async def login_page(
+    request: Request,
+    token: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """
     If ?token=xyz is provided (from the WhatsApp bot), validate and set session.
     Otherwise show the login page with instructions.
     """
     if token:
-        whatsapp_id = decode_magic_link_token(token)
-        if whatsapp_id:
+        auth_user_id = consume_dashboard_login_token(token, db)
+        if auth_user_id:
             response = RedirectResponse(url="/", status_code=303)
             response.set_cookie(
                 SESSION_COOKIE,
-                create_session_token(whatsapp_id),
+                create_session_token(auth_user_id),
                 httponly=True,
                 max_age=60 * 60 * 24 * 7,
                 samesite="lax",
@@ -653,11 +658,9 @@ async def dev_login(request: Request):
     if not mock_auth_enabled():
         return _auth_error(request, "Ruta no disponible.", status_code=404)
     response = RedirectResponse(url="/", status_code=303)
-    from app.auth import MOCK_WHATSAPP_ID
-
     response.set_cookie(
         SESSION_COOKIE,
-        create_session_token(MOCK_WHATSAPP_ID),
+        create_session_token(MOCK_AUTH_USER_ID),
         httponly=True,
         max_age=60 * 60 * 24 * 7,
         samesite="lax",
@@ -704,9 +707,9 @@ async def dashboard(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
@@ -725,7 +728,7 @@ async def dashboard(
         "dashboard.html",
         {
             "request": request,
-            "whatsapp_id": whatsapp_id,
+            "whatsapp_id": user.whatsapp_id,
             "stats": stats,
             "transactions": transactions,
             "budgets": budgets,
@@ -743,9 +746,9 @@ async def exportar_csv(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
@@ -810,9 +813,9 @@ async def api_graficos_distribucion(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
@@ -824,9 +827,9 @@ async def api_graficos_cartera(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
@@ -838,9 +841,9 @@ async def api_graficos_flujo(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     d_from, d_to, _, _ = _get_default_dates(date_from, date_to)
@@ -858,9 +861,9 @@ async def dashboard_actualizar(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
@@ -892,9 +895,9 @@ async def partial_charts(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 
@@ -912,9 +915,9 @@ async def partial_transactions(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    whatsapp_id: str = Depends(get_current_user),
+    auth_user_id: str = Depends(get_current_user),
 ):
-    user = get_user(db, whatsapp_id)
+    user = get_user_by_auth_id(db, auth_user_id)
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
 

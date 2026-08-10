@@ -40,6 +40,20 @@ def get_user(db: Session, whatsapp_id: str) -> Optional[Usuario]:
     return db.query(Usuario).filter(Usuario.whatsapp_id == whatsapp_id).first()
 
 
+def get_user_by_auth_id(db: Session, auth_user_id: str) -> Optional[Usuario]:
+    """Resolve the dashboard's current user via Supabase auth_user_id.
+
+    This is the identity the real session (STK-89 magic-link login) carries —
+    prefer this over `get_user`/whatsapp_id for anything reached through
+    `get_current_user`.
+    """
+    try:
+        auth_uuid = uuid.UUID(str(auth_user_id))
+    except (ValueError, AttributeError, TypeError):
+        return None
+    return db.query(Usuario).filter(Usuario.auth_user_id == auth_uuid).first()
+
+
 def get_summary_stats(
     db: Session,
     user_id: uuid.UUID,
