@@ -217,6 +217,173 @@ def test_login_with_reused_token_is_rejected(client, db):
     assert "luka_session" not in second.cookies
 
 
+def test_login_with_valid_dates_redirects_with_query_params(client, db):
+    user = create_linked_user(db)
+    create_login_link(db, user.id, "dated-token")
+
+    response = client.get(
+        "/login",
+        params={
+            "token": "dated-token",
+            "date_from": "2026-08-01",
+            "date_to": "2026-08-31",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?date_from=2026-08-01&date_to=2026-08-31"
+    assert "luka_session" in response.cookies
+
+
+def test_login_with_only_date_from_propagates_only_date_from(client, db):
+    user = create_linked_user(db)
+    create_login_link(db, user.id, "date-from-only")
+
+    response = client.get(
+        "/login",
+        params={"token": "date-from-only", "date_from": "2026-08-01"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?date_from=2026-08-01"
+    assert "luka_session" in response.cookies
+
+
+def test_login_with_only_date_to_propagates_only_date_to(client, db):
+    user = create_linked_user(db)
+    create_login_link(db, user.id, "date-to-only")
+
+    response = client.get(
+        "/login",
+        params={"token": "date-to-only", "date_to": "2026-08-31"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?date_to=2026-08-31"
+    assert "luka_session" in response.cookies
+
+
+def test_login_without_dates_redirects_to_root(client, db):
+    user = create_linked_user(db)
+    create_login_link(db, user.id, "no-dates-token")
+
+    response = client.get(
+        "/login",
+        params={"token": "no-dates-token"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert "luka_session" in response.cookies
+
+
+@pytest.mark.parametrize(
+    "extra_params",
+    [
+        {"date_from": "not-a-date"},
+        {"date_to": "2026-02-30"},
+        {"date_from": "2026-02-29"},  # 2026 is not a leap year
+        {"date_from": "2026-8-1"},  # missing zero padding
+        {"date_from": "01-08-2026"},  # wrong format
+        {"date_from": ""},  # empty string
+        {"date_from": "2026-08-01", "date_to": "invalid"},  # one valid, one invalid
+        {"date_from": "invalid", "date_to": "2026-08-31"},  # one invalid, one valid
+    ],
+)
+def test_login_with_invalid_date_ignores_filters_and_redirects_to_root(
+    client, db, extra_params
+):
+    user = create_linked_user(db)
+    token = f"tok-{uuid.uuid4()}"
+    link = create_login_link(db, user.id, token)
+
+    params = {"token": token, **extra_params}
+    response = client.get("/login", params=params, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert "luka_session" in response.cookies
+    db.refresh(link)
+    assert link.estado == "consumido"
+
+
+def test_login_ignores_and_does_not_propagate_extra_parameters(client, db):
+    user = create_linked_user(db)
+    create_login_link(db, user.id, "extra-params-token")
+
+    response = client.get(
+        "/login",
+        params={
+            "token": "extra-params-token",
+            "date_from": "2026-08-01",
+            "date_to": "2026-08-31",
+            "next": "https://attacker.example.com",
+            "tipo": "egreso",
+            "categoria": "Supermercado",
+            "usuario_id": "999",
+            "user_id": "999",
+            "auth_user_id": str(uuid.uuid4()),
+            "whatsapp_id": "5491112345678",
+            "other_param": "foo",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?date_from=2026-08-01&date_to=2026-08-31"
+    assert "next" not in response.headers["location"]
+    assert "attacker" not in response.headers["location"]
+    assert "tipo" not in response.headers["location"]
+    assert "categoria" not in response.headers["location"]
+    assert "usuario_id" not in response.headers["location"]
+    assert "user_id" not in response.headers["location"]
+    assert "auth_user_id" not in response.headers["location"]
+    assert "whatsapp_id" not in response.headers["location"]
+    assert "other_param" not in response.headers["location"]
+
+
+def test_login_with_invalid_token_rejects_even_with_valid_dates(client, db):
+    response = client.get(
+        "/login",
+        params={
+            "token": "non-existent-token",
+            "date_from": "2026-08-01",
+            "date_to": "2026-08-31",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert "luka_session" not in response.cookies
+
+
+def test_login_with_expired_token_rejects_even_with_valid_dates(client, db):
+    user = create_linked_user(db)
+    create_login_link(
+        db,
+        user.id,
+        "expired-with-dates",
+        expira_en=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+
+    response = client.get(
+        "/login",
+        params={
+            "token": "expired-with-dates",
+            "date_from": "2026-08-01",
+            "date_to": "2026-08-31",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert "luka_session" not in response.cookies
+
+
 # --- cross-user isolation -------------------------------------------------------
 
 

@@ -1,9 +1,11 @@
 import csv
 import io
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Optional
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -623,20 +625,51 @@ async def finalize_registration(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+_STRICT_DATE_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
+
+
+def _is_valid_date(val: Optional[str]) -> bool:
+    """Validate that val is strictly in YYYY-MM-DD format and a real calendar date."""
+    if not val or not isinstance(val, str):
+        return False
+    if not _STRICT_DATE_REGEX.match(val):
+        return False
+    try:
+        date.fromisoformat(val)
+        return True
+    except ValueError:
+        return False
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(
     request: Request,
     token: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
     If ?token=xyz is provided (from the WhatsApp bot), validate and set session.
+    Preserves valid temporal filters (date_from, date_to) upon successful login.
     Otherwise show the login page with instructions.
     """
     if token:
         auth_user_id = consume_dashboard_login_token(token, db)
         if auth_user_id:
-            response = RedirectResponse(url="/", status_code=303)
+            has_invalid_date = (
+                (date_from is not None and not _is_valid_date(date_from))
+                or (date_to is not None and not _is_valid_date(date_to))
+            )
+            params: dict[str, str] = {}
+            if not has_invalid_date:
+                if date_from is not None:
+                    params["date_from"] = date_from
+                if date_to is not None:
+                    params["date_to"] = date_to
+
+            target_url = f"/?{urlencode(params)}" if params else "/"
+            response = RedirectResponse(url=target_url, status_code=303)
             response.set_cookie(
                 SESSION_COOKIE,
                 create_session_token(auth_user_id),
