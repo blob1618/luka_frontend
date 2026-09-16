@@ -1,3 +1,4 @@
+import asyncio
 import csv
 import io
 import os
@@ -9,7 +10,12 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -44,6 +50,12 @@ from app.services.onboarding_finalization import (
     VerifiedIdentity,
     finalize_onboarding,
     normalize_display_name,
+)
+from app.services.conversation_flow_admin import (
+    FlowAdminAPIError,
+    FlowAdminConfigurationError,
+    flow_admin_client,
+    is_flow_admin,
 )
 from app.services.supabase_auth import (
     ONBOARDING_COOKIE,
@@ -112,6 +124,14 @@ def _clear_all_onboarding_cookies(response, *, secure: bool) -> None:
 def _clear_google_auth_cookies(response, *, secure: bool) -> None:
     delete_auth_cookie(response, PENDING_AUTH_COOKIE, secure=secure)
     CookieAuthStorage.clear_known_cookies(response, secure=secure)
+
+
+def require_flow_admin_user(
+    auth_user_id: str = Depends(get_current_user),
+) -> str:
+    if not is_flow_admin(auth_user_id):
+        raise HTTPException(status_code=403, detail="Acceso administrativo requerido")
+    return auth_user_id
 
 
 @app.get("/registro", response_class=HTMLResponse)
@@ -709,6 +729,198 @@ async def logout():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Conversation flow administration
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _flow_admin_error_response(exc: Exception) -> JSONResponse:
+    if isinstance(exc, FlowAdminAPIError):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "message": exc.message,
+                "errors": list(exc.errors),
+            },
+        )
+    return JSONResponse(
+        status_code=503,
+        content={"message": str(exc), "errors": []},
+    )
+
+
+def _flow_admin_page_error(
+    request: Request,
+    exc: Exception,
+    *,
+    whatsapp_id: str | None = None,
+) -> HTMLResponse:
+    status_code = exc.status_code if isinstance(exc, FlowAdminAPIError) else 503
+    return templates.TemplateResponse(
+        "admin_flows.html",
+        {
+            "request": request,
+            "whatsapp_id": whatsapp_id,
+            "is_flow_admin": True,
+            "flows": [],
+            "admin_error": str(exc),
+        },
+        status_code=status_code,
+    )
+
+
+@app.get("/admin/flujos", response_class=HTMLResponse)
+async def conversation_flow_admin(
+    request: Request,
+    db: Session = Depends(get_db),
+    auth_user_id: str = Depends(require_flow_admin_user),
+):
+    user = get_user_by_auth_id(db, auth_user_id)
+    try:
+        flows = await flow_admin_client.list()
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_page_error(
+            request,
+            exc,
+            whatsapp_id=user.whatsapp_id if user else None,
+        )
+    return templates.TemplateResponse(
+        "admin_flows.html",
+        {
+            "request": request,
+            "whatsapp_id": user.whatsapp_id if user else None,
+            "is_flow_admin": True,
+            "flows": flows,
+            "admin_error": None,
+        },
+    )
+
+
+@app.get("/admin/flujos/nuevo", response_class=HTMLResponse)
+async def new_conversation_flow(
+    request: Request,
+    db: Session = Depends(get_db),
+    auth_user_id: str = Depends(require_flow_admin_user),
+):
+    user = get_user_by_auth_id(db, auth_user_id)
+    try:
+        contract = await flow_admin_client.contracts()
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_page_error(
+            request,
+            exc,
+            whatsapp_id=user.whatsapp_id if user else None,
+        )
+    return templates.TemplateResponse(
+        "admin_flow_editor.html",
+        {
+            "request": request,
+            "whatsapp_id": user.whatsapp_id if user else None,
+            "is_flow_admin": True,
+            "flow": None,
+            "contract": contract,
+        },
+    )
+
+
+@app.post("/admin/flujos/api/validar")
+async def validate_conversation_flow_proxy(
+    payload: dict,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.validate(payload)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.post("/admin/flujos/api", status_code=201)
+async def create_conversation_flow_proxy(
+    payload: dict,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.create(payload)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.put("/admin/flujos/api/{flow_id}/borrador")
+async def save_conversation_flow_proxy(
+    flow_id: str,
+    payload: dict,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.save_draft(flow_id, payload)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.delete("/admin/flujos/api/{flow_id}/borrador")
+async def discard_conversation_flow_proxy(
+    flow_id: str,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.discard_draft(flow_id)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.post("/admin/flujos/api/{flow_id}/publicar")
+async def publish_conversation_flow_proxy(
+    flow_id: str,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.publish(flow_id)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.post("/admin/flujos/api/{flow_id}/retirar")
+async def archive_conversation_flow_proxy(
+    flow_id: str,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    try:
+        return await flow_admin_client.archive(flow_id)
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+
+
+@app.get("/admin/flujos/{flow_id}", response_class=HTMLResponse)
+async def edit_conversation_flow(
+    flow_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    auth_user_id: str = Depends(require_flow_admin_user),
+):
+    user = get_user_by_auth_id(db, auth_user_id)
+    try:
+        flow, contract = await asyncio.gather(
+            flow_admin_client.get(flow_id),
+            flow_admin_client.contracts(),
+        )
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_page_error(
+            request,
+            exc,
+            whatsapp_id=user.whatsapp_id if user else None,
+        )
+    return templates.TemplateResponse(
+        "admin_flow_editor.html",
+        {
+            "request": request,
+            "whatsapp_id": user.whatsapp_id if user else None,
+            "is_flow_admin": True,
+            "flow": flow,
+            "contract": contract,
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main dashboard
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -762,6 +974,7 @@ async def dashboard(
         {
             "request": request,
             "whatsapp_id": user.whatsapp_id,
+            "is_flow_admin": is_flow_admin(auth_user_id),
             "stats": stats,
             "transactions": transactions,
             "budgets": budgets,

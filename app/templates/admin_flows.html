@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Flujos conversacionales · LUKA{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="/static/css/admin_flows.css" />
+{% endblock %}
+
+{% block content %}
+<section class="flow-admin-shell">
+  <header class="page-header flow-admin-header">
+    <div>
+      <p class="eyebrow">Administración</p>
+      <h1 class="page-title">Flujos conversacionales</h1>
+      <p class="page-subtitle">Editá cómo Luka presenta mensajes y recorridos, sin cambiar sus reglas financieras.</p>
+    </div>
+    <a class="flow-button flow-button-primary" href="/admin/flujos/nuevo">Crear flujo</a>
+  </header>
+
+  <div class="flow-safety-note">
+    <strong>Routing libre siempre activo.</strong>
+    Los flujos personalizan respuestas emitidas por el backend; no crean menús globales ni impiden que el usuario haga otra operación.
+  </div>
+
+  {% if admin_error %}
+  <div class="flow-alert flow-alert-error" role="alert">
+    <strong>No pudimos cargar los flujos.</strong>
+    <span>{{ admin_error }}</span>
+  </div>
+  {% elif not flows %}
+  <div class="flow-empty">
+    <span class="flow-empty-mark">01</span>
+    <h2>Todavía no hay flujos configurados</h2>
+    <p>Creá el primero para personalizar una respuesta que Luka ya sabe cuándo emitir.</p>
+    <a class="flow-button flow-button-primary" href="/admin/flujos/nuevo">Crear primer flujo</a>
+  </div>
+  {% else %}
+  <div class="flow-grid">
+    {% for flow in flows %}
+    <article class="flow-card">
+      <div class="flow-card-topline">
+        <span class="flow-status flow-status-{{ flow.status }}">{{ 'Activo' if flow.status == 'active' else 'Retirado' }}</span>
+        <code>{{ flow.event_key }}</code>
+      </div>
+      <div class="flow-card-body">
+        <h2>{{ flow.name }}</h2>
+        <p class="flow-slug">{{ flow.slug }}</p>
+      </div>
+      <div class="flow-version-row">
+        <div>
+          <span class="flow-meta-label">Publicada</span>
+          <strong>{% if flow.published %}v{{ flow.published.version_number }}{% else %}—{% endif %}</strong>
+        </div>
+        <div>
+          <span class="flow-meta-label">Borrador</span>
+          <strong>{% if flow.draft %}v{{ flow.draft.version_number }}{% else %}—{% endif %}</strong>
+        </div>
+        <a class="flow-card-link" href="/admin/flujos/{{ flow.id }}">Abrir editor →</a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

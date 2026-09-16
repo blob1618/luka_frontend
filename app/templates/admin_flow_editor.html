@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}{{ flow.name if flow else 'Nuevo flujo' }} · LUKA{% endblock %}
+
+{% block head %}
+  <link rel="stylesheet" href="/static/css/admin_flows.css" />
+{% endblock %}
+
+{% block content %}
+<section class="flow-admin-shell flow-editor-shell">
+  <header class="flow-editor-header">
+    <div>
+      <a class="flow-back-link" href="/admin/flujos">← Volver a flujos</a>
+      <p class="eyebrow">{{ 'Nuevo recorrido' if not flow else flow.event_key }}</p>
+      <h1 class="page-title">{{ flow.name if flow else 'Crear flujo conversacional' }}</h1>
+      <p class="page-subtitle">El backend decide cuándo mostrarlo. Acá sólo definís el contenido y las opciones permitidas.</p>
+    </div>
+    {% if flow %}
+    <div class="flow-version-summary">
+      <span><small>Publicada</small>{{ 'v' ~ flow.published.version_number if flow.published else '—' }}</span>
+      <span><small>Borrador</small>{{ 'v' ~ flow.draft.version_number if flow.draft else '—' }}</span>
+    </div>
+    {% endif %}
+  </header>
+
+  <div id="flow-notice" class="flow-alert" hidden role="status"></div>
+
+  <form id="flow-editor" class="flow-editor" novalidate>
+    <section class="flow-panel flow-basics-panel">
+      <div class="flow-panel-heading">
+        <span class="flow-step">1</span>
+        <div>
+          <h2>Identidad y evento</h2>
+          <p>Elegí el resultado del backend cuya presentación querés administrar.</p>
+        </div>
+      </div>
+      <div class="flow-form-grid">
+        <label class="flow-field">
+          <span>Nombre visible</span>
+          <input id="flow-name" maxlength="120" required autocomplete="off" />
+        </label>
+        <label class="flow-field">
+          <span>Identificador</span>
+          <input id="flow-slug" maxlength="100" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required autocomplete="off" {% if flow %}disabled{% endif %} />
+          <small>Minúsculas y guiones, por ejemplo <code>confirmar-categoria</code>.</small>
+        </label>
+        <label class="flow-field flow-field-wide">
+          <span>Evento del backend</span>
+          <select id="flow-event" required {% if flow %}disabled{% endif %}></select>
+          <small id="event-help"></small>
+        </label>
+      </div>
+    </section>
+
+    <section class="flow-panel">
+      <div class="flow-panel-heading flow-panel-heading-split">
+        <div class="flow-heading-group">
+          <span class="flow-step">2</span>
+          <div>
+            <h2>Mensajes del recorrido</h2>
+            <p>Cada opción puede avanzar a otro mensaje o ejecutar una acción cerrada del backend.</p>
+          </div>
+        </div>
+        <div class="flow-node-actions" id="add-node-actions">
+          <button type="button" class="flow-button flow-button-secondary" data-add-node="text">+ Texto</button>
+          <button type="button" class="flow-button flow-button-secondary" data-add-node="reply_button">+ Botones</button>
+          <button type="button" class="flow-button flow-button-secondary" data-add-node="list">+ Lista</button>
+        </div>
+      </div>
+
+      <label class="flow-field flow-start-field">
+        <span>Primer mensaje</span>
+        <select id="flow-start-node" required></select>
+      </label>
+      <div id="flow-nodes" class="flow-node-list"></div>
+    </section>
+
+    <footer class="flow-editor-actions">
+      <div class="flow-editor-actions-left">
+        {% if flow and flow.draft %}
+        <button type="button" id="discard-flow" class="flow-button flow-button-danger-ghost">Descartar borrador</button>
+        {% endif %}
+        {% if flow and flow.status != 'archived' %}
+        <button type="button" id="archive-flow" class="flow-button flow-button-danger-ghost">Retirar flujo</button>
+        {% endif %}
+      </div>
+      <div class="flow-editor-actions-right">
+        <button type="button" id="validate-flow" class="flow-button flow-button-secondary">Validar</button>
+        <button type="submit" id="save-flow" class="flow-button flow-button-primary">Guardar borrador</button>
+        {% if flow and flow.status != 'archived' %}
+        <button type="button" id="publish-flow" class="flow-button flow-button-success">Publicar</button>
+        {% endif %}
+      </div>
+    </footer>
+  </form>
+</section>
+
+<script id="flow-contract-data" type="application/json">{{ contract | tojson }}</script>
+<script id="flow-record-data" type="application/json">{{ flow | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+  <script src="/static/js/admin_flows.js" defer></script>
+{% endblock %}
