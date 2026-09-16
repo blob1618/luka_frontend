@@ -148,6 +148,50 @@ def test_create_proxy_forwards_mutation_to_backend_client(client, monkeypatch):
     create_mock.assert_awaited_once_with(payload)
 
 
+def test_save_draft_proxy_forwards_only_to_backend_client(client, monkeypatch):
+    save_mock = AsyncMock(return_value=flow_payload())
+    monkeypatch.setattr(flow_admin_client, "save_draft", save_mock)
+    payload = {
+        "name": "Enlace actualizado",
+        "definition": flow_payload()["draft"]["definition"],
+    }
+
+    response = client.put(
+        f"/admin/flujos/api/{flow_payload()['id']}/borrador",
+        json=payload,
+    )
+
+    assert response.status_code == 200
+    save_mock.assert_awaited_once_with(flow_payload()["id"], payload)
+
+
+@pytest.mark.parametrize(
+    ("method_name", "http_method", "path_suffix"),
+    [
+        ("discard_draft", "delete", "borrador"),
+        ("publish", "post", "publicar"),
+        ("archive", "post", "retirar"),
+    ],
+)
+def test_lifecycle_proxies_use_backend_api(
+    client,
+    monkeypatch,
+    method_name,
+    http_method,
+    path_suffix,
+):
+    operation = AsyncMock(return_value=flow_payload())
+    monkeypatch.setattr(flow_admin_client, method_name, operation)
+    flow_id = flow_payload()["id"]
+
+    response = getattr(client, http_method)(
+        f"/admin/flujos/api/{flow_id}/{path_suffix}"
+    )
+
+    assert response.status_code == 200
+    operation.assert_awaited_once_with(flow_id)
+
+
 def test_validation_errors_are_returned_without_backend_credentials(client, monkeypatch):
     monkeypatch.setattr(
         flow_admin_client,
