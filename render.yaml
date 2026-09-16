@@ -12,3 +12,9 @@ services:
         generateValue: true
       - key: MOCK_WHATSAPP_ID
         sync: false
+      - key: LUKA_BACKEND_URL
+        sync: false
+      - key: FLOW_ADMIN_API_KEY
+        sync: false
+      - key: FLOW_ADMIN_AUTH_USER_IDS
+        sync: false
