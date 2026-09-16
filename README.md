@@ -77,3 +77,19 @@ Si creas el Web Service manualmente en Render, utiliza la siguiente configuraci�
 No te olvides de configurar las siguientes **Environment Variables** en Render:
 - `DATABASE_URL` (Debe ser idéntica a la que usás localmente).
 - `SECRET_KEY` (Generá un texto largo, aleatorio y seguro para cifrar las cookies de los usuarios).
+- `LUKA_BACKEND_URL` (URL pública o privada alcanzable del backend `luka`).
+- `FLOW_ADMIN_API_KEY` (misma credencial interna configurada en el backend; nunca se expone al navegador).
+- `FLOW_ADMIN_AUTH_USER_IDS` (lista separada por comas de `auth_user_id` autorizados a administrar flujos).
+
+## Panel de flujos conversacionales
+
+Los administradores autorizados acceden a `/admin/flujos`. El panel lista
+recorridos, crea y edita borradores, valida texto/botones/listas y permite
+publicar, descartar o retirar versiones. Todas las operaciones pasan por la API
+protegida de `luka`; este repositorio no lee ni modifica las tablas de flujos en
+Supabase.
+
+Los flujos sólo personalizan resultados que el backend ya decidió. No existe un
+menú principal obligatorio: después de `/link` o mientras hay una interacción
+visual pendiente, el usuario puede escribir otra operación y el dispatcher de
+Luka la procesa normalmente.
