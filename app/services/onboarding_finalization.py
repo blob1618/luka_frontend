@@ -11,8 +11,21 @@ from sqlalchemy.orm import Session
 from app.models.database import (
     AcuerdoAceptado,
     AcuerdoVersion,
+    Categoria,
     OnboardingInvitacion,
     Usuario,
+)
+
+DEFAULT_CATEGORIES: tuple[str, ...] = (
+    "Servicios",
+    "Comida",
+    "Transporte",
+    "Ocio",
+    "Vivienda",
+    "Salud",
+    "Ingresos",
+    "Educacion",
+    "Ropa",
 )
 
 
@@ -202,6 +215,26 @@ def finalize_onboarding(
                         origen="web_onboarding",
                     )
                 )
+
+            has_active_categories = (
+                db.query(Categoria.id)
+                .filter(
+                    Categoria.usuario_id == user.id,
+                    Categoria.esta_eliminado.is_(False),
+                )
+                .first()
+                is not None
+            )
+            if not has_active_categories:
+                for category_name in DEFAULT_CATEGORIES:
+                    db.add(
+                        Categoria(
+                            usuario_id=user.id,
+                            nombre=category_name,
+                            es_default=True,
+                            esta_eliminado=False,
+                        )
+                    )
 
             invitation.estado = "consumida"
             invitation.usuario_id = user.id
