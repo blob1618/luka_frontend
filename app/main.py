@@ -1008,7 +1008,10 @@ async def exportar_csv(
                 MovimientoFinanciero.categoria_id == Categoria.id,
                 isouter=True,
             )
-            .filter(MovimientoFinanciero.usuario_id == user.id)
+            .filter(
+                MovimientoFinanciero.usuario_id == user.id,
+                MovimientoFinanciero.anulado_en.is_(None),
+            )
         )
         if d_from:
             q = q.filter(MovimientoFinanciero.fecha_movimiento >= d_from)

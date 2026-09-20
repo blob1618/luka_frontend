@@ -195,6 +195,7 @@ class MovimientoFinanciero(Base):
     fecha_movimiento = Column(Date, nullable=False, default=date.today)
     origen = Column(String, nullable=False, default="whatsapp_text")
     whatsapp_message_id = Column(String)
+    anulado_en = Column(DateTime(timezone=True), nullable=True)
     creado_en = Column(DateTime(timezone=True), nullable=False, default=func.now())
     actualizado_en = Column(
         DateTime(timezone=True), nullable=False, default=func.now(), onupdate=func.now()
