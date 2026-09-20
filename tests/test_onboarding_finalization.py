@@ -11,6 +11,7 @@ from app.models.database import (
     AcuerdoAceptado,
     AcuerdoVersion,
     Base,
+    Categoria,
     MovimientoFinanciero,
     OnboardingInvitacion,
     Usuario,
@@ -24,6 +25,17 @@ from app.services.onboarding_finalization import (
 
 AUTH_USER_ID = uuid.UUID("76aecc76-0e88-4bae-a08f-c3c3297ed20a")
 NOW = datetime(2026, 7, 16, 15, 0, tzinfo=timezone.utc)
+EXPECTED_DEFAULT_CATEGORIES = {
+    "Servicios",
+    "Comida",
+    "Transporte",
+    "Ocio",
+    "Vivienda",
+    "Salud",
+    "Ingresos",
+    "Educacion",
+    "Ropa",
+}
 
 
 @pytest.fixture
@@ -314,7 +326,9 @@ def test_existing_acceptance_is_not_duplicated(db):
     assert acceptance.aceptado_en.replace(tzinfo=timezone.utc) == accepted_at
 
 
-@pytest.mark.parametrize("failure_stage", ["user", "acceptance", "invitation"])
+@pytest.mark.parametrize(
+    "failure_stage", ["user", "category", "acceptance", "invitation"]
+)
 def test_database_failure_rolls_back_every_stage(db, failure_stage):
     invitation = add_invitation(db)
     agreement = add_agreement(db)
@@ -325,6 +339,10 @@ def test_database_failure_rolls_back_every_stage(db, failure_stage):
             isinstance(item, Usuario) for item in session.new
         ):
             raise SQLAlchemyError("user write failed")
+        if failure_stage == "category" and any(
+            isinstance(item, Categoria) for item in session.new
+        ):
+            raise SQLAlchemyError("category write failed")
         if failure_stage == "acceptance" and any(
             isinstance(item, AcuerdoAceptado) for item in session.new
         ):
@@ -343,6 +361,7 @@ def test_database_failure_rolls_back_every_stage(db, failure_stage):
     assert result.status == "database_error"
     assert db.query(Usuario).count() == 0
     assert db.query(AcuerdoAceptado).count() == 0
+    assert db.query(Categoria).count() == 0
     assert stored.estado == "pendiente"
     assert stored.usuario_id is None
 
@@ -443,3 +462,117 @@ def test_invitation_query_uses_for_update(db, monkeypatch):
     assert finalize(db, invitation, agreement).status == "success"
     assert OnboardingInvitacion in locked_entities
     assert Usuario in locked_entities
+
+
+def test_creates_default_categories_for_new_user(db):
+    invitation = add_invitation(db)
+    agreement = add_agreement(db)
+
+    result = finalize(db, invitation, agreement)
+
+    assert result.status == "success"
+    user = db.query(Usuario).one()
+    categories = (
+        db.query(Categoria)
+        .filter(Categoria.usuario_id == user.id)
+        .all()
+    )
+    assert len(categories) == 9
+    assert {category.nombre for category in categories} == EXPECTED_DEFAULT_CATEGORIES
+    for c in categories:
+        assert c.es_default is True
+        assert c.esta_eliminado is False
+
+
+def test_seeds_categories_for_existing_user_without_active_categories(db):
+    invitation = add_invitation(db)
+    agreement = add_agreement(db)
+    user = add_user(
+        db,
+        email="persona@example.com",
+        whatsapp_id=invitation.whatsapp_id,
+    )
+
+    result = finalize(db, invitation, agreement)
+
+    assert result.status == "success"
+    categories = (
+        db.query(Categoria)
+        .filter(Categoria.usuario_id == user.id)
+        .all()
+    )
+    assert len(categories) == 9
+    assert {category.nombre for category in categories} == EXPECTED_DEFAULT_CATEGORIES
+    for c in categories:
+        assert c.es_default is True
+        assert c.esta_eliminado is False
+
+
+def test_seeds_categories_when_existing_user_only_has_deleted_categories(db):
+    invitation = add_invitation(db)
+    agreement = add_agreement(db)
+    user = add_user(
+        db,
+        email="persona@example.com",
+        whatsapp_id=invitation.whatsapp_id,
+    )
+    deleted_cat = Categoria(
+        usuario_id=user.id,
+        nombre="Antigua",
+        es_default=False,
+        esta_eliminado=True,
+    )
+    db.add(deleted_cat)
+    db.commit()
+
+    result = finalize(db, invitation, agreement)
+
+    assert result.status == "success"
+    active_categories = (
+        db.query(Categoria)
+        .filter(
+            Categoria.usuario_id == user.id,
+            Categoria.esta_eliminado.is_(False),
+        )
+        .all()
+    )
+    assert len(active_categories) == 9
+    assert {
+        category.nombre for category in active_categories
+    } == EXPECTED_DEFAULT_CATEGORIES
+    for c in active_categories:
+        assert c.es_default is True
+
+    db.refresh(deleted_cat)
+    assert deleted_cat.esta_eliminado is True
+    assert deleted_cat.nombre == "Antigua"
+
+
+def test_does_not_duplicate_or_add_categories_if_user_already_has_active(db):
+    invitation = add_invitation(db)
+    agreement = add_agreement(db)
+    user = add_user(
+        db,
+        email="persona@example.com",
+        whatsapp_id=invitation.whatsapp_id,
+    )
+    existing_cat = Categoria(
+        usuario_id=user.id,
+        nombre="Personalizada",
+        es_default=False,
+        esta_eliminado=False,
+    )
+    db.add(existing_cat)
+    db.commit()
+
+    result = finalize(db, invitation, agreement)
+
+    assert result.status == "success"
+    user_categories = (
+        db.query(Categoria)
+        .filter(Categoria.usuario_id == user.id)
+        .all()
+    )
+    assert len(user_categories) == 1
+    assert user_categories[0].id == existing_cat.id
+    assert user_categories[0].nombre == "Personalizada"
