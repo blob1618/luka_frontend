@@ -69,6 +69,7 @@ def get_summary_stats(
         .filter(
             MovimientoFinanciero.usuario_id == user_id,
             MovimientoFinanciero.tipo == "egreso",
+            MovimientoFinanciero.anulado_en.is_(None),
         )
     )
     if date_from:
@@ -87,6 +88,7 @@ def get_summary_stats(
     q_in = db.query(MovimientoFinanciero).filter(
         MovimientoFinanciero.usuario_id == user_id,
         MovimientoFinanciero.tipo == "ingreso",
+        MovimientoFinanciero.anulado_en.is_(None),
     )
     if date_from:
         q_in = q_in.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -136,6 +138,7 @@ def get_expenses_by_category(
         .filter(
             MovimientoFinanciero.usuario_id == user_id,
             MovimientoFinanciero.tipo == "egreso",
+            MovimientoFinanciero.anulado_en.is_(None),
         )
     )
 
@@ -172,6 +175,7 @@ def get_expenses_by_day(
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
         MovimientoFinanciero.tipo == "egreso",
+        MovimientoFinanciero.anulado_en.is_(None),
     )
 
     if date_from:
@@ -199,7 +203,10 @@ def get_recent_transactions(
         .join(
             Categoria, MovimientoFinanciero.categoria_id == Categoria.id, isouter=True
         )
-        .filter(MovimientoFinanciero.usuario_id == user_id)
+        .filter(
+            MovimientoFinanciero.usuario_id == user_id,
+            MovimientoFinanciero.anulado_en.is_(None),
+        )
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -248,6 +255,7 @@ def get_budgets_with_usage(
             MovimientoFinanciero.usuario_id == user_id,
             MovimientoFinanciero.categoria_id == b.LimiteCategoria.categoria_id,
             MovimientoFinanciero.tipo == "egreso",
+            MovimientoFinanciero.anulado_en.is_(None),
         )
         if date_from:
             q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -298,6 +306,7 @@ def get_patrimonio_neto(
         func.sum(MovimientoFinanciero.cantidad).label("total"),
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
+        MovimientoFinanciero.anulado_en.is_(None),
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -356,6 +365,7 @@ def get_consumo_presupuesto(
         MovimientoFinanciero.usuario_id == user_id,
         MovimientoFinanciero.tipo == "egreso",
         MovimientoFinanciero.categoria_id.in_(categoria_ids),
+        MovimientoFinanciero.anulado_en.is_(None),
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -390,6 +400,7 @@ def get_monthly_flow(
         func.sum(MovimientoFinanciero.cantidad).label("total"),
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
+        MovimientoFinanciero.anulado_en.is_(None),
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
@@ -462,6 +473,7 @@ def get_portfolio_by_currency(
     ).filter(
         MovimientoFinanciero.usuario_id == user_id,
         MovimientoFinanciero.tipo == "egreso",
+        MovimientoFinanciero.anulado_en.is_(None),
     )
     if date_from:
         q = q.filter(MovimientoFinanciero.fecha_movimiento >= date_from)
