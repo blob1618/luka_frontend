@@ -18,13 +18,13 @@ luka-frontend-cloudflare-spike → Settings → Variables and Secrets**:
 - `SECRET_KEY`
 - `SUPABASE_PUBLISHABLE_KEY`
 - `FLOW_ADMIN_API_KEY`
+- `FLOW_ADMIN_AUTH_USER_IDS`
 
 Configure these non-secret variables in the same screen:
 
 - `APP_BASE_URL`: the final HTTPS Worker or custom-domain origin
 - `SUPABASE_URL`
 - `LUKA_BACKEND_URL`
-- `FLOW_ADMIN_AUTH_USER_IDS`
 
 The database should use a Cloudflare Hyperdrive binding named `HYPERDRIVE`.
 Create the Hyperdrive configuration with the existing Supabase PostgreSQL
@@ -76,3 +76,13 @@ virtual environments, test files, or Render-only artifacts.
 Cloudflare Free currently limits each dynamic request to 10 ms of CPU time. The
 spike is successful only if authenticated server-rendered routes remain below that
 limit under realistic data.
+
+## Current free-tier finding
+
+The Worker deploys successfully, serves templates and assets, and connects to the
+existing PostgreSQL database through Hyperdrive with the pure-Python `pg8000`
+driver. However, repeated database-backed login checks intermittently exceed the
+Workers Free 10 ms CPU limit and return a Cloudflare 1102 error. Do not move
+production traffic from Render until the application is reduced to a static/thin
+frontend that calls the Luka backend, or the Worker is moved to a paid plan with a
+higher CPU allowance.

@@ -15,24 +15,47 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 from sqlalchemy.types import JSON, Uuid
 
-from app.runtime import get_database_url
+from app.runtime import get_setting
 
 # Obtener DATABASE_URL del entorno, usando SQLite como fallback para desarrollo local
-DATABASE_URL = get_database_url()
+DATABASE_URL = get_setting("DATABASE_URL", "sqlite:///./luka.db")
 
-# Manejar la conexión a PostgreSQL de Supabase con psycopg3
-if DATABASE_URL.startswith("postgresql"):
-    # psycopg3 usa postgresql:// directamente (no requiere especificar el driver)
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,
-    pool_pre_ping=True,  # Verificar conexiones antes de usarlas
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-)
+def _normalize_database_url(database_url: str, postgres_driver: str = "psycopg") -> str:
+    if database_url.startswith(("postgres://", "postgresql://")):
+        _, suffix = database_url.split("://", 1)
+        return f"postgresql+{postgres_driver}://{suffix}"
+    return database_url
+
+
+def _create_database_engine(database_url: str):
+    return create_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args={"check_same_thread": False} if "sqlite" in database_url else {},
+    )
+
+
+DATABASE_URL = _normalize_database_url(DATABASE_URL)
+engine = _create_database_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def configure_database(database_url: str, *, postgres_driver: str = "psycopg") -> None:
+    """Rebind SQLAlchemy once request-scoped Cloudflare bindings are available."""
+    global DATABASE_URL, engine, SessionLocal
+
+    normalized_url = _normalize_database_url(database_url, postgres_driver)
+    if normalized_url == DATABASE_URL:
+        return
+
+    previous_engine = engine
+    DATABASE_URL = normalized_url
+    engine = _create_database_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    previous_engine.dispose()
 
 Base = declarative_base()
 

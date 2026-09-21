@@ -1,26 +1,36 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "luka-frontend-cloudflare-spike",
-  "main": "cloudflare_worker/worker.py",
-  "compatibility_date": "2026-09-21",
-  "compatibility_flags": ["python_workers"],
-  "workers_dev": true,
-  "keep_vars": true,
-  "vars": {
-    "CLOUDFLARE_RUNTIME": "true",
-    "APP_ENV": "production",
-    "APP_BASE_URL": "https://luka-frontend-cloudflare-spike.blob1618.workers.dev",
-    "AUTH_COOKIE_SECURE": "true",
-    "ENABLE_MOCK_AUTH": "false"
-  },
-  "assets": {
-    "directory": "./static",
-    "binding": "ASSETS",
-    "run_worker_first": true,
-    "html_handling": "none",
-    "not_found_handling": "none"
-  },
-  "observability": {
-    "enabled": true
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "luka-frontend-cloudflare-spike",
+	"main": "cloudflare_worker/worker.py",
+	"compatibility_date": "2026-09-21",
+	"compatibility_flags": [
+		"python_workers"
+	],
+	"workers_dev": true,
+	"keep_vars": true,
+	"vars": {
+		"CLOUDFLARE_RUNTIME": "true",
+		"APP_ENV": "production",
+		"APP_BASE_URL": "https://luka-frontend-cloudflare-spike.blob1618.workers.dev",
+		"AUTH_COOKIE_SECURE": "true",
+		"ENABLE_MOCK_AUTH": "false",
+		"LUKA_BACKEND_URL": "https://luka-f2nb.onrender.com",
+		"SUPABASE_URL": "https://wewtbqfbnymyvvxzrmbg.supabase.co"
+	},
+	"assets": {
+		"directory": "./static",
+		"binding": "ASSETS",
+		"run_worker_first": true,
+		"html_handling": "none",
+		"not_found_handling": "none"
+	},
+	"observability": {
+		"enabled": true
+	},
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "6ee1ed901f7d4e429a92ec4097413a90"
+		}
+	]
 }

@@ -7,8 +7,19 @@ import os
 from typing import Any
 
 
+_worker_env: Any | None = None
+
+
+def configure_worker_env(worker_env: Any | None) -> None:
+    """Make request-scoped Worker bindings available to imported app modules."""
+    global _worker_env
+    _worker_env = worker_env
+
+
 def _cloudflare_env() -> Any | None:
     """Return the Workers binding environment when running inside Cloudflare."""
+    if _worker_env is not None:
+        return _worker_env
     try:
         workers = importlib.import_module("workers")
         return getattr(workers, "env", None)
@@ -40,7 +51,7 @@ def get_database_url() -> str:
         try:
             hyperdrive = getattr(worker_env, "HYPERDRIVE")
             connection_string = getattr(hyperdrive, "connectionString")
-        except (AttributeError, RuntimeError):
+        except Exception:
             connection_string = None
         if connection_string:
             return str(connection_string)
