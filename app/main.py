@@ -1,7 +1,6 @@
 import asyncio
 import csv
 import io
-import os
 import re
 from contextlib import asynccontextmanager
 from datetime import date
@@ -14,10 +13,12 @@ from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
+    Response,
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import DictLoader, Environment
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -41,6 +42,7 @@ from app.dashboard import (
     get_summary_stats,
 )
 from app.models.database import get_db, MovimientoFinanciero, Categoria
+from app.runtime import get_setting, is_cloudflare_runtime
 from app.services.onboarding import (
     RegistrationValidation,
     validate_registration_context,
@@ -87,13 +89,41 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="LUKA Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+if not is_cloudflare_runtime():
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
-templates = Jinja2Templates(directory="app/templates")
+if is_cloudflare_runtime():
+    from app.template_bundle import TEMPLATES
+
+    templates = Jinja2Templates(env=Environment(loader=DictLoader(TEMPLATES)))
+else:
+    templates = Jinja2Templates(directory="app/templates")
 
 
 def _secure_cookie_fallback() -> bool:
-    return os.getenv("APP_ENV", "development").strip().lower() == "production"
+    return get_setting("APP_ENV", "development").strip().lower() == "production"
+
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {
+        "status": "ok",
+        "runtime": "cloudflare" if is_cloudflare_runtime() else "python",
+    }
+
+
+if is_cloudflare_runtime():
+
+    @app.get("/static/{asset_path:path}", include_in_schema=False)
+    async def cloudflare_static_asset(asset_path: str, request: Request):
+        asset_response = await request.scope["env"].ASSETS.fetch(
+            f"https://assets.local/{asset_path}"
+        )
+        return Response(
+            content=await asset_response.bytes(),
+            status_code=asset_response.status,
+            headers=asset_response.headers,
+        )
 
 
 def _auth_response(response):

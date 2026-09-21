@@ -41,7 +41,7 @@ luka_frontend/
 ├── .env                     # Variables de entorno locales
 ├── .env.example             # Plantilla de variables
 ├── render.yaml              # Configuración de despliegue como código
-└── requirements.txt         # Dependencias Python
+└── requirements-render.txt  # Dependencias del despliegue Python/Render
 ```
 
 ## Ejecutar en Local
@@ -53,7 +53,7 @@ luka_frontend/
    ```
 2. Instala dependencias:
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements-render.txt
    ```
 3. Configura tu `.env` tomando como base `.env.example`. **Asegurate de que tu puerto en la URL de Supabase sea el `6543` (el transaction pooler para evitar errores de red).**
 4. Arranca el servidor local en modo desarrollo:
@@ -70,7 +70,7 @@ Dado que el repositorio incluye un archivo `render.yaml`, solo tienes que conect
 ### Opción 2: Web Service Manual
 Si creas el Web Service manualmente en Render, utiliza la siguiente configuración:
 
-- **Build Command:** `pip install -r requirements.txt`
+- **Build Command:** `pip install -r requirements-render.txt`
 - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
 ### Variables de entorno necesarias
@@ -80,6 +80,12 @@ No te olvides de configurar las siguientes **Environment Variables** en Render:
 - `LUKA_BACKEND_URL` (URL pública o privada alcanzable del backend `luka`).
 - `FLOW_ADMIN_API_KEY` (misma credencial interna configurada en el backend; nunca se expone al navegador).
 - `FLOW_ADMIN_AUTH_USER_IDS` (lista separada por comas de `auth_user_id` autorizados a administrar flujos).
+
+## Prueba de migración a Cloudflare
+
+La rama experimental para Cloudflare Workers Free conserva Render sin cambios y
+documenta la configuración, los secretos y las verificaciones necesarias en
+[`CLOUDFLARE.md`](CLOUDFLARE.md).
 
 ## Panel de flujos conversacionales
 

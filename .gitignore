@@ -11,3 +11,10 @@ __pycache__/
 .agents/
 .pytest_cache/
 .ruff_cache/
+.venv-workers/
+python_modules/
+pylock.toml
+.wrangler/
+.wrangler-dry-run/
+.wrangler-dry-run-*/
+cloudflare_worker/app/

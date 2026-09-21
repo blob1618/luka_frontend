@@ -2,7 +2,6 @@ import base64
 import binascii
 import hashlib
 import hmac
-import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,6 +20,8 @@ from supabase_auth.errors import (
     AuthInvalidJwtError,
     AuthSessionMissingError,
 )
+
+from app.runtime import get_setting
 
 
 ONBOARDING_COOKIE = "luka_onboarding"
@@ -92,7 +93,7 @@ class PendingGoogleIdentity:
 
 
 def _parse_bool(name: str, default: str) -> bool:
-    value = os.getenv(name, default).strip().lower()
+    value = get_setting(name, default).strip().lower()
     if value == "true":
         return True
     if value == "false":
@@ -120,7 +121,7 @@ def _validated_origin(name: str, value: str, *, https_required: bool) -> str:
 
 
 def cookie_secure_enabled() -> bool:
-    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    app_env = get_setting("APP_ENV", "development").strip().lower()
     if app_env not in {"development", "production"}:
         raise AuthConfigurationError("Invalid APP_ENV")
     secure = _parse_bool("AUTH_COOKIE_SECURE", "false")
@@ -130,22 +131,22 @@ def cookie_secure_enabled() -> bool:
 
 
 def get_auth_settings() -> SupabaseAuthSettings:
-    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    app_env = get_setting("APP_ENV", "development").strip().lower()
     if app_env not in {"development", "production"}:
         raise AuthConfigurationError("Invalid APP_ENV")
 
     https_required = app_env == "production"
     app_base_url = _validated_origin(
         "APP_BASE_URL",
-        os.getenv("APP_BASE_URL", ""),
+        get_setting("APP_BASE_URL", ""),
         https_required=https_required,
     )
     supabase_url = _validated_origin(
         "SUPABASE_URL",
-        os.getenv("SUPABASE_URL", ""),
+        get_setting("SUPABASE_URL", ""),
         https_required=https_required,
     )
-    publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY", "").strip()
+    publishable_key = get_setting("SUPABASE_PUBLISHABLE_KEY", "").strip()
     if not publishable_key.startswith("sb_publishable_") or len(publishable_key) < 20:
         raise AuthConfigurationError("Invalid Supabase publishable key")
 
@@ -159,8 +160,8 @@ def get_auth_settings() -> SupabaseAuthSettings:
 
 
 def _secret_key() -> str:
-    secret = os.getenv("SECRET_KEY", _DEV_SECRET)
-    app_env = os.getenv("APP_ENV", "development").strip().lower()
+    secret = get_setting("SECRET_KEY", _DEV_SECRET)
+    app_env = get_setting("APP_ENV", "development").strip().lower()
     if not secret or (
         app_env == "production"
         and (secret in {_DEV_SECRET, _PLACEHOLDER_SECRET} or len(secret) < 32)

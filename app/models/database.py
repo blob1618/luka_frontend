@@ -1,4 +1,3 @@
-import os
 import uuid
 from datetime import datetime, date
 from sqlalchemy import (
@@ -16,8 +15,10 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 from sqlalchemy.types import JSON, Uuid
 
+from app.runtime import get_database_url
+
 # Obtener DATABASE_URL del entorno, usando SQLite como fallback para desarrollo local
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./luka.db")
+DATABASE_URL = get_database_url()
 
 # Manejar la conexión a PostgreSQL de Supabase con psycopg3
 if DATABASE_URL.startswith("postgresql"):

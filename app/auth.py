@@ -10,7 +10,6 @@ mock id. `/dev-login` remains a local-only shortcut gated by
 """
 
 import hashlib
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -20,12 +19,13 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.orm import Session
 
 from app.models.database import DashboardLoginLink, Usuario
+from app.runtime import get_setting
 from app.services.supabase_auth import _secret_key
 
 load_dotenv()
 
 # --- Configuration -----------------------------------------------------------
-MOCK_AUTH_USER_ID = os.getenv(
+MOCK_AUTH_USER_ID = get_setting(
     "MOCK_AUTH_USER_ID", "00000000-0000-0000-0000-000000000001"
 )
 SESSION_COOKIE = "luka_session"
@@ -34,8 +34,8 @@ SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
 
 def mock_auth_enabled() -> bool:
     """Keep development shortcuts unavailable outside explicit mock mode."""
-    app_env = os.getenv("APP_ENV", "development").strip().lower()
-    enabled = os.getenv("ENABLE_MOCK_AUTH", "true").strip().lower() == "true"
+    app_env = get_setting("APP_ENV", "development").strip().lower()
+    enabled = get_setting("ENABLE_MOCK_AUTH", "true").strip().lower() == "true"
     return app_env == "development" and enabled
 
 

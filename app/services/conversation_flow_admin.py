@@ -1,8 +1,9 @@
-import os
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from app.runtime import get_setting
 
 
 class FlowAdminConfigurationError(RuntimeError):
@@ -20,7 +21,7 @@ class FlowAdminAPIError(RuntimeError):
 
 
 def is_flow_admin(auth_user_id: str) -> bool:
-    configured = os.getenv("FLOW_ADMIN_AUTH_USER_IDS", "")
+    configured = get_setting("FLOW_ADMIN_AUTH_USER_IDS", "")
     allowed = {
         value.strip().lower()
         for value in configured.split(",")
@@ -31,8 +32,8 @@ def is_flow_admin(auth_user_id: str) -> bool:
 
 class ConversationFlowAdminClient:
     def _settings(self) -> tuple[str, str]:
-        base_url = os.getenv("LUKA_BACKEND_URL", "").strip().rstrip("/")
-        api_key = os.getenv("FLOW_ADMIN_API_KEY", "").strip()
+        base_url = get_setting("LUKA_BACKEND_URL", "").strip().rstrip("/")
+        api_key = get_setting("FLOW_ADMIN_API_KEY", "").strip()
         if not base_url or not api_key:
             raise FlowAdminConfigurationError(
                 "La administración de flujos no está configurada."
