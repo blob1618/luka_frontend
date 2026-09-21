@@ -9,6 +9,7 @@
   "vars": {
     "CLOUDFLARE_RUNTIME": "true",
     "APP_ENV": "production",
+    "APP_BASE_URL": "https://luka-frontend-cloudflare-spike.blob1618.workers.dev",
     "AUTH_COOKIE_SECURE": "true",
     "ENABLE_MOCK_AUTH": "false"
   },
