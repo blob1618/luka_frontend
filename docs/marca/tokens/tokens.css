@@ -1,0 +1,155 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LUKA BRAND TOKENS v1.0.0 — 2026-09-23
+   Fuente de verdad: docs/marca/tokens/design-tokens.json
+   Tema oscuro por defecto (producto) + tema claro con [data-theme="light"].
+   Contraste WCAG AA verificado: ver docs/marca/03-identidad-visual.md §4.6.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  /* ── Primitivos ────────────────────────────────────────────────────────── */
+  --navy-950: #06101F;
+  --navy-900: #0A1626;
+  --navy-800: #102138;
+  --navy-700: #17304D;
+  --navy-600: #1F4166;
+  --blue-700: #1D4ED8;
+  --blue-600: #2563EB;
+  --blue-500: #3B82F6;
+  --blue-400: #6EA8FF;
+  --blue-300: #A5C6FF;
+  --emerald-700: #047857;
+  --emerald-600: #0E9F6E;
+  --emerald-500: #10B981;
+  --emerald-400: #34D399;
+  --amber-700: #B45309;
+  --amber-500: #F59E0B;
+  --amber-400: #FBBF24;
+  --red-600: #DC2626;
+  --red-400: #F87171;
+  --graphite-700: #334155;
+  --graphite-500: #64748B;
+  --graphite-400: #94A3B8;
+  --graphite-300: #CBD5E1;
+
+  /* ── Semánticos (oscuro) ───────────────────────────────────────────────── */
+  --bg-base: var(--navy-900);
+  --bg-surface: var(--navy-800);
+  --bg-elevated: var(--navy-700);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-primary: #E8EFFA;
+  --text-secondary: #A9BCD6;
+  --text-muted: #8AA0C4;
+  --accent: var(--blue-400);
+  --action: var(--blue-600);
+  --action-hover: var(--blue-500);
+  --on-action: #FFFFFF;
+  --success: var(--emerald-400);
+  --warning: var(--amber-400);
+  --danger: var(--red-400);
+  --money-in: var(--emerald-400);
+  --money-out: var(--graphite-400);
+
+  /* ── Categóricas (oscuro) ──────────────────────────────────────────────── */
+  --cat-servicios: #6EA8FF;
+  --cat-comida: #F97316;
+  --cat-transporte: #22D3EE;
+  --cat-ocio: #A78BFA;
+  --cat-vivienda: #818CF8;
+  --cat-salud: #2DD4BF;
+  --cat-educacion: #A3E635;
+  --cat-ropa: #F472B6;
+  --cat-ingresos: #34D399;
+  --cat-otros: #64748B;
+
+  /* ── Gradientes ────────────────────────────────────────────────────────── */
+  --gradient-brand: linear-gradient(135deg, #2563EB 0%, #0E9F6E 100%);
+  --gradient-brand-soft: linear-gradient(135deg, rgba(37, 99, 235, 0.18) 0%, rgba(14, 159, 110, 0.18) 100%);
+
+  /* ── Tipografía ────────────────────────────────────────────────────────── */
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --text-display-lg: 700 32px/1.15 var(--font-display);
+  --text-display-md: 700 24px/1.2 var(--font-display);
+  --text-heading-lg: 700 20px/1.3 var(--font-ui);
+  --text-heading-md: 600 17px/1.35 var(--font-ui);
+  --text-body-lg: 400 16px/1.55 var(--font-ui);
+  --text-body-md: 400 14px/1.5 var(--font-ui);
+  --text-body-sm: 400 13px/1.45 var(--font-ui);
+  --text-caption: 500 12px/1.4 var(--font-ui);
+  --text-data: 600 14px/1.4 var(--font-ui);
+
+  /* ── Espaciado (base 4) ────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radios ────────────────────────────────────────────────────────────── */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --radius-full: 999px;
+
+  /* ── Sombras ───────────────────────────────────────────────────────────── */
+  --shadow-card: 0 4px 32px rgba(6, 16, 31, 0.45);
+  --shadow-glow: 0 0 40px rgba(37, 99, 235, 0.18);
+
+  /* ── Movimiento ────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --duration-slow: 400ms;
+}
+
+/* ── Tema claro ──────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+  --bg-base: #F4F7FC;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-glass: rgba(16, 33, 56, 0.03);
+  --border: rgba(16, 33, 56, 0.12);
+  --border-strong: rgba(16, 33, 56, 0.22);
+  --text-primary: #0A1626;
+  --text-secondary: #475569;
+  --text-muted: #5B6B80;
+  --accent: var(--blue-700);
+  --action: var(--blue-700);
+  --action-hover: var(--blue-600);
+  --success: var(--emerald-700);
+  --warning: var(--amber-700);
+  --danger: var(--red-600);
+  --money-in: var(--emerald-700);
+  --money-out: #5B6B80;
+  --cat-servicios: #2563EB;
+  --cat-comida: #EA580C;
+  --cat-transporte: #0891B2;
+  --cat-ocio: #7C3AED;
+  --cat-vivienda: #4F46E5;
+  --cat-salud: #0D9488;
+  --cat-educacion: #4D7C0F;
+  --cat-ropa: #DB2777;
+  --cat-ingresos: #059669;
+  --shadow-card: 0 4px 24px rgba(6, 16, 31, 0.10);
+  --shadow-glow: 0 0 40px rgba(29, 78, 216, 0.12);
+}
+
+/* ── Utilidades de datos ─────────────────────────────────────────────────── */
+.font-data,
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}

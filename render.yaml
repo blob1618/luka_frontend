@@ -6,11 +6,23 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: DATABASE_URL
+      - key: APP_ENV
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: AUTH_COOKIE_SECURE
+        sync: false
+      - key: ENABLE_MOCK_AUTH
         sync: false
       - key: SECRET_KEY
         generateValue: true
-      - key: MOCK_WHATSAPP_ID
+      - key: MOCK_AUTH_USER_ID
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: LUKA_BACKEND_URL
         sync: false

@@ -1,4 +1,5 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -11,3 +12,4 @@ __pycache__/
 .agents/
 .pytest_cache/
 .ruff_cache/
+.playwright-mcp/
