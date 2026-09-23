@@ -74,12 +74,24 @@ Si creas el Web Service manualmente en Render, utiliza la siguiente configuraci�
 - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
 ### Variables de entorno necesarias
-No te olvides de configurar las siguientes **Environment Variables** en Render:
-- `DATABASE_URL` (Debe ser idéntica a la que usás localmente).
+No te olvides de configurar las siguientes **Environment Variables** en Render
+(el listado completo con la plantilla está en `.env.example`):
+
+- `APP_ENV` (`development` o `production`; en producción se exige HTTPS y cookies seguras).
+- `APP_BASE_URL` (URL pública base del frontend; debe ser HTTPS en producción).
+- `SUPABASE_URL` (URL del proyecto Supabase usada para la autenticación).
+- `SUPABASE_PUBLISHABLE_KEY` (clave publicable de Supabase; empieza con `sb_publishable_`).
+- `AUTH_COOKIE_SECURE` (`true` obligatorio en producción; `false` solo para desarrollo local).
+- `ENABLE_MOCK_AUTH` (solo desarrollo: habilita `/dev-login`; en producción debe quedar desactivado).
 - `SECRET_KEY` (Generá un texto largo, aleatorio y seguro para cifrar las cookies de los usuarios).
+- `MOCK_AUTH_USER_ID` (solo desarrollo: UUID del usuario falso que usa `/dev-login`).
+- `DATABASE_URL` (Debe ser idéntica a la que usás localmente).
 - `LUKA_BACKEND_URL` (URL pública o privada alcanzable del backend `luka`).
 - `FLOW_ADMIN_API_KEY` (misma credencial interna configurada en el backend; nunca se expone al navegador).
 - `FLOW_ADMIN_AUTH_USER_IDS` (lista separada por comas de `auth_user_id` autorizados a administrar flujos).
+
+Las variables marcadas como solo desarrollo (`ENABLE_MOCK_AUTH`, `MOCK_AUTH_USER_ID` y
+`AUTH_COOKIE_SECURE=false`) no deben usarse en producción; el resto son obligatorias.
 
 ## Panel de flujos conversacionales
 

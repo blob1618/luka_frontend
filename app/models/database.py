@@ -16,6 +16,12 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.sql import func
 from sqlalchemy.types import JSON, Uuid
 
+from dotenv import load_dotenv
+
+# Cargar .env antes de leer DATABASE_URL: este módulo se importa antes de los
+# load_dotenv() de main.py/auth.py, así que sin esto el .env se ignora.
+load_dotenv()
+
 # Obtener DATABASE_URL del entorno, usando SQLite como fallback para desarrollo local
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./luka.db")
 
