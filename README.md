@@ -51,11 +51,15 @@ luka_frontend/
    python3 -m venv venv
    source venv/bin/activate
    ```
+   En PowerShell de Windows, activa el entorno con:
+   ```powershell
+   .\venv\Scripts\Activate.ps1
+   ```
 2. Instala dependencias:
    ```bash
    pip install -r requirements.txt
    ```
-3. Configura tu `.env` tomando como base `.env.example`. **Asegurate de que tu puerto en la URL de Supabase sea el `6543` (el transaction pooler para evitar errores de red).**
+3. Configura tu `.env` tomando como base `.env.example`. Para este backend, copia en `DATABASE_URL` la cadena completa de **Session pooler** desde Supabase → **Connect**. No cambies solo el puerto: el host, el usuario y el puerto dependen del modo de conexión. No subas `.env` al repositorio.
 4. Arranca el servidor local en modo desarrollo:
    ```bash
    uvicorn app.main:app --reload --port 8001
@@ -85,7 +89,7 @@ No te olvides de configurar las siguientes **Environment Variables** en Render
 - `ENABLE_MOCK_AUTH` (solo desarrollo: habilita `/dev-login`; en producción debe quedar desactivado).
 - `SECRET_KEY` (Generá un texto largo, aleatorio y seguro para cifrar las cookies de los usuarios).
 - `MOCK_AUTH_USER_ID` (solo desarrollo: UUID del usuario falso que usa `/dev-login`).
-- `DATABASE_URL` (Debe ser idéntica a la que usás localmente).
+- `DATABASE_URL` (Cadena de conexión de Supabase; configúrala como variable secreta en Render y no la subas al repositorio).
 - `LUKA_BACKEND_URL` (URL pública o privada alcanzable del backend `luka`).
 - `FLOW_ADMIN_API_KEY` (misma credencial interna configurada en el backend; nunca se expone al navegador).
 - `FLOW_ADMIN_AUTH_USER_IDS` (lista separada por comas de `auth_user_id` autorizados a administrar flujos).
