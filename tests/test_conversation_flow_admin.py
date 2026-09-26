@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+from hashlib import sha256
+import re
 from unittest.mock import AsyncMock
 
 import httpx
@@ -130,6 +132,33 @@ def test_editor_receives_closed_contract_from_backend(client, monkeypatch):
     assert "category.confirmation_required" in response.text
     assert "confirm_category" in response.text
     assert "FLOW_ADMIN_API_KEY" not in response.text
+
+
+def test_flow_pages_load_content_versioned_assets(client, monkeypatch):
+    monkeypatch.setattr(
+        flow_admin_client, "contracts", AsyncMock(return_value=contract_payload())
+    )
+    monkeypatch.setattr(flow_admin_client, "list", AsyncMock(return_value=[]))
+    editor = client.get("/admin/flujos/nuevo")
+    listing = client.get("/admin/flujos")
+
+    paths = [
+        "css/admin_flows.css",
+        "js/admin_flow_graph.js",
+        "js/admin_flows.js",
+    ]
+    for path in paths:
+        urls = re.findall(rf"/static/{re.escape(path)}\?v=[a-f0-9]+", editor.text)
+        assert len(urls) == 1
+        asset = client.get(urls[0])
+        assert asset.status_code == 200
+        assert urls[0].endswith(sha256(asset.content).hexdigest()[:16])
+        if path.endswith(".css"):
+            assert urls[0] in listing.text
+
+    assert editor.text.index("admin_flow_graph.js?") < editor.text.index(
+        "admin_flows.js?"
+    )
 
 
 def test_create_proxy_forwards_mutation_to_backend_client(client, monkeypatch):

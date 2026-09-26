@@ -41,6 +41,7 @@ from app.dashboard import (
     get_summary_stats,
 )
 from app.models.database import get_db, MovimientoFinanciero, Categoria
+from app.static_assets import static_asset_url
 from app.services.onboarding import (
     RegistrationValidation,
     validate_registration_context,
@@ -90,6 +91,7 @@ app = FastAPI(title="LUKA Dashboard", docs_url=None, redoc_url=None, lifespan=li
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_asset_url"] = static_asset_url
 
 
 def _secure_cookie_fallback() -> bool:
