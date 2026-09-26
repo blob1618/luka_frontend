@@ -52,10 +52,37 @@
       </div>
     </section>
 
-    <section class="flow-panel">
+    <section class="flow-panel flow-map-panel" aria-labelledby="flow-map-title">
       <div class="flow-panel-heading flow-panel-heading-split">
         <div class="flow-heading-group">
           <span class="flow-step">2</span>
+          <div>
+            <h2 id="flow-map-title">Vista del recorrido</h2>
+            <p>Seguí las opciones de cada mensaje. Tocá una tarjeta para editarla abajo.</p>
+          </div>
+        </div>
+        <div class="flow-map-tools" role="group" aria-label="Escala del recorrido">
+          <button type="button" class="flow-button flow-button-secondary" id="flow-map-zoom-out" aria-label="Alejar">−</button>
+          <output id="flow-map-zoom" aria-label="Zoom">100%</output>
+          <button type="button" class="flow-button flow-button-secondary" id="flow-map-zoom-in" aria-label="Acercar">+</button>
+          <button type="button" class="flow-button flow-button-secondary" id="flow-map-fit">Ajustar</button>
+        </div>
+      </div>
+      <div class="flow-map-legend">
+        <span><i class="flow-map-dot-message"></i>Mensaje</span>
+        <span><i class="flow-map-dot-action"></i>Acción del backend</span>
+        <span><i class="flow-map-dot-warning"></i>Revisar conexión</span>
+        <span id="flow-map-source">{{ 'Borrador actual' if flow and flow.draft else 'Versión publicada · los cambios se ven aquí' if flow else 'Nuevo borrador' }}</span>
+      </div>
+      <div id="flow-map" class="flow-map" tabindex="0" role="region" aria-label="Mapa de mensajes y acciones. Desplazate para explorar el recorrido."></div>
+      <p id="flow-map-summary" class="flow-map-summary" role="status"></p>
+      <p class="flow-map-note">Las flechas siguen las opciones configuradas. Las acciones terminan este recorrido y devuelven el control a Luka. Usá Validar antes de publicar.</p>
+    </section>
+
+    <section class="flow-panel">
+      <div class="flow-panel-heading flow-panel-heading-split">
+        <div class="flow-heading-group">
+          <span class="flow-step">3</span>
           <div>
             <h2>Mensajes del recorrido</h2>
             <p>Cada opción puede avanzar a otro mensaje o ejecutar una acción cerrada del backend.</p>
@@ -100,5 +127,6 @@
 {% endblock %}
 
 {% block scripts %}
+  <script src="/static/js/admin_flow_graph.js" defer></script>
   <script src="/static/js/admin_flows.js" defer></script>
 {% endblock %}
