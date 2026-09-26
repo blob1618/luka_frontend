@@ -71,6 +71,14 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.flow-list-filters { align-items: end; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 180px auto; }
+.flow-list-count { color: var(--text-secondary); font-size: .78rem; margin: 14px 0; }
+.flow-card[hidden], .flow-empty[hidden] { display: none; }
+
+@media (max-width: 640px) {
+  .flow-list-filters { grid-template-columns: minmax(0, 1fr); }
+}
+
 .flow-card, .flow-panel, .flow-empty {
   background: linear-gradient(145deg, rgba(22,29,48,.96), rgba(15,20,36,.96));
   border: 1px solid var(--border);
