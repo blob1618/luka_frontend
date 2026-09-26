@@ -35,9 +35,29 @@
     <a class="flow-button flow-button-primary" href="/admin/flujos/nuevo">Crear primer flujo</a>
   </div>
   {% else %}
-  <div class="flow-grid">
+  <form class="flow-list-filters" id="flow-list-filters" role="search" aria-label="Buscar flujos">
+    <label class="flow-field">
+      <span>Buscar por nombre o ID</span>
+      <input type="search" id="flow-search" placeholder="Nombre, identificador o ID del flujo" autocomplete="off" aria-controls="flow-list" />
+    </label>
+    <label class="flow-field">
+      <span>Estado</span>
+      <select id="flow-status-filter" aria-controls="flow-list">
+        <option value="all">Todos</option>
+        <option value="active">Solo activos</option>
+        <option value="archived">Solo retirados</option>
+      </select>
+    </label>
+    <button type="reset" class="flow-button flow-button-secondary">Limpiar filtros</button>
+  </form>
+  <p class="flow-list-count" id="flow-list-count" role="status" aria-live="polite">{{ flows | length }} flujos</p>
+  <div class="flow-empty" id="flow-list-empty" hidden>
+    <h2>No hay flujos que coincidan</h2>
+    <p>Probá con otro nombre o ID, cambiá el estado o limpiá los filtros.</p>
+  </div>
+  <div class="flow-grid" id="flow-list">
     {% for flow in flows %}
-    <article class="flow-card">
+    <article class="flow-card" data-flow-status="{{ flow.status }}" data-flow-search="{{ flow.name }} {{ flow.id }} {{ flow.slug }} {{ flow.event_key }}">
       <div class="flow-card-topline">
         <span class="flow-status flow-status-{{ flow.status }}">{{ 'Activo' if flow.status == 'active' else 'Retirado' }}</span>
         <code>{{ flow.event_key }}</code>
@@ -62,4 +82,8 @@
   </div>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ static_asset_url('js/admin_flow_list.js') }}" defer></script>
 {% endblock %}
