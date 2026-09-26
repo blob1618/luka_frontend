@@ -20,6 +20,25 @@
   };
   let definition = structuredClone(initialDefinition);
   let slugTouched = Boolean(flow);
+  const graphSource = document.getElementById("flow-map-source");
+  const initialGraphSource = graphSource.textContent;
+  const graph = new window.LukaFlowGraph(document.getElementById("flow-map"), (index) => {
+    const target = nodesRoot.children[index];
+    if (!target) return;
+    nodesRoot.querySelectorAll(".flow-node-selected").forEach((node) => node.classList.remove("flow-node-selected"));
+    target.classList.add("flow-node-selected");
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.querySelector("textarea")?.focus({ preventScroll: true });
+  });
+  let graphFrame;
+  function updateGraph() {
+    cancelAnimationFrame(graphFrame);
+    graphFrame = requestAnimationFrame(() => {
+      graph.update(definition);
+      graphSource.textContent = JSON.stringify(definition) === JSON.stringify(initialDefinition)
+        ? initialGraphSource : "Cambios locales · guardá el borrador";
+    });
+  }
 
   const element = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -398,6 +417,7 @@
     updateEventHelp();
     renderStartOptions();
     nodesRoot.replaceChildren(...definition.nodes.map(renderNode));
+    updateGraph();
   }
 
   function payload() {
@@ -485,6 +505,8 @@
   });
   slugInput.addEventListener("input", () => { slugTouched = true; });
   startSelect.addEventListener("change", () => { definition.start_node = startSelect.value; });
+  editor.addEventListener("input", updateGraph);
+  editor.addEventListener("change", updateGraph);
   addNodeActions.addEventListener("click", (event) => {
     const type = event.target.dataset.addNode;
     if (type) addNode(type);

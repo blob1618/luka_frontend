@@ -101,6 +101,15 @@ publicar, descartar o retirar versiones. Todas las operaciones pasan por la API
 protegida de `luka`; este repositorio no lee ni modifica las tablas de flujos en
 Supabase.
 
+El editor incluye una **Vista del recorrido** que muestra los mensajes, las
+opciones que los conectan y las acciones que devuelven el control al backend.
+El mapa se actualiza con los cambios locales, permite acercar/alejar y ajustar
+la vista, y al seleccionar un mensaje enfoca sus campos de edición. Marca
+destinos faltantes, IDs repetidos y mensajes sin conexión desde el inicio;
+**Validar** sigue siendo la comprobación definitiva antes de publicar.
+La vista no modifica ni guarda la definición por sí sola: los cambios se
+guardan o publican con los controles existentes.
+
 Los flujos sólo personalizan resultados que el backend ya decidió. No existe un
 menú principal obligatorio: después de `/link` o mientras hay una interacción
 visual pendiente, el usuario puede escribir otra operación y el dispatcher de
