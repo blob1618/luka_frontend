@@ -3,7 +3,7 @@
 {% block title %}{{ flow.name if flow else 'Nuevo flujo' }} · LUKA{% endblock %}
 
 {% block head %}
-  <link rel="stylesheet" href="/static/css/admin_flows.css" />
+  <link rel="stylesheet" href="{{ static_asset_url('css/admin_flows.css') }}" />
 {% endblock %}
 
 {% block content %}
@@ -127,6 +127,6 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="/static/js/admin_flow_graph.js" defer></script>
-  <script src="/static/js/admin_flows.js" defer></script>
+  <script src="{{ static_asset_url('js/admin_flow_graph.js') }}" defer></script>
+  <script src="{{ static_asset_url('js/admin_flows.js') }}" defer></script>
 {% endblock %}
