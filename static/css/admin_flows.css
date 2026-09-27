@@ -121,6 +121,7 @@
 .flow-panel-heading p { color: var(--text-muted); font-size: .78rem; margin-top: 4px; }
 .flow-step { align-items: center; background: rgba(99,102,241,.15); border: 1px solid rgba(129,140,248,.24); border-radius: 9px; color: #a5b4fc; display: flex; flex: 0 0 30px; font-size: .76rem; font-weight: 800; height: 30px; justify-content: center; }
 .flow-node-actions { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+.flow-node-actions[hidden] { display: none; }
 
 .flow-form-grid { display: grid; gap: 17px; grid-template-columns: 1fr 1fr; }
 .flow-field { display: flex; flex-direction: column; gap: 7px; }
