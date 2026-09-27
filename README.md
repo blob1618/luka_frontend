@@ -96,7 +96,7 @@ Las variables marcadas como solo desarrollo (`ENABLE_MOCK_AUTH`, `MOCK_AUTH_USER
 ## Panel de flujos conversacionales
 
 Los administradores autorizados acceden a `/admin/flujos`. El panel lista
-recorridos, crea y edita borradores, valida texto/botones/listas y permite
+recorridos, crea y edita borradores, valida texto/botones/listas/enlaces y permite
 publicar, descartar o retirar versiones. Todas las operaciones pasan por la API
 protegida de `luka`; este repositorio no lee ni modifica las tablas de flujos en
 Supabase.
@@ -114,3 +114,18 @@ Los flujos sólo personalizan resultados que el backend ya decidió. No existe u
 menú principal obligatorio: después de `/link` o mientras hay una interacción
 visual pendiente, el usuario puede escribir otra operación y el dispatcher de
 Luka la procesa normalmente.
+
+Para mostrar el registro como un botón, editá el flujo `onboarding.invitation`
+y elegí **Tipo → Botón de enlace** en el mensaje existente. Escribí
+**Completar registro** en **Texto del botón** y `{registration_url}` en
+**Enlace del botón**. Quitá `{registration_url}` del contenido y conservá
+`{ttl_minutes}` si querés indicar su vencimiento. Luego validá, guardá el
+borrador y publicalo.
+
+Los eventos de un único mensaje permiten cambiar su tipo, sin agregar más
+mensajes. En otros recorridos también está disponible **+ Botón de enlace**.
+El destino admite una URL HTTP/HTTPS completa o una variable de enlace que
+el backend habilite para ese evento. Para el dashboard, el destino
+`{login_url}` es automático y sólo se edita el texto del botón.
+Esta opción requiere desplegar el backend con el tipo `url_button` habilitado
+en su contrato.

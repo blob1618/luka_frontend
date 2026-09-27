@@ -94,9 +94,9 @@
         card.setAttribute("aria-label", `Editar mensaje ${node.id || index + 1}`);
         card.addEventListener("click", () => this.onSelect(index));
         const badges = make("span", "flow-map-badges");
-        badges.append(make("span", "", { text: "Texto", reply_button: "Botones", list: "Lista" }[node.type] || node.type));
+        badges.append(make("span", "", { text: "Texto", reply_button: "Botones", list: "Lista", url_button: "Botón de enlace" }[node.type] || node.type));
         if (index === start) badges.append(make("span", "flow-map-start", "Inicio"));
-        if (node.type === "text") badges.append(make("span", "", "Fin"));
+        if (["text", "url_button"].includes(node.type)) badges.append(make("span", "", "Fin"));
         if (!levels.has(index) || duplicates.has(node.id)) {
           card.classList.add("flow-map-warning");
           badges.append(make("span", "", duplicates.has(node.id) ? "ID repetido" : "Sin conexión desde el inicio"));
@@ -108,6 +108,7 @@
         card.append(body);
         if (node.footer) card.append(make("span", "flow-map-footer", node.footer));
         if (node.type === "list") card.append(make("span", "flow-map-list-button", node.button || "Ver opciones"));
+        if (node.type === "url_button") card.append(make("span", "flow-map-list-button", node.url_button_label || "Abrir enlace"));
         const ports = [];
         const appendOptions = (options) => options.forEach((option) => {
           const port = make("span", "flow-map-option", option.title || "Opción sin texto");

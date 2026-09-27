@@ -87,6 +87,19 @@
     variables: [], actions: [], terminal_only: false,
   };
 
+  const allowedNodeTypes = () => contract.node_types.filter((type) =>
+    ["text", "reply_button", "list", "url_button"].includes(type)
+      && (!currentPolicy().terminal_only || ["text", "url_button"].includes(type)));
+
+  function defaultURLButton() {
+    const policy = currentPolicy();
+    const variable = policy.url_button?.url_variable || policy.url_variables?.[0];
+    return {
+      url_button_label: policy.url_button?.default_label || "Abrir enlace",
+      url: variable ? `{${variable}}` : "",
+    };
+  }
+
   function showNotice(kind, message, errors = []) {
     notice.hidden = false;
     notice.className = `flow-alert flow-alert-${kind}`;
@@ -132,19 +145,20 @@
       ? `Variables: ${policy.variables.map((value) => `{${value}}`).join(", ")}.`
       : "Este evento no expone variables.";
     eventHelp.textContent = policy.terminal_only
-      ? `${variables} Respuesta terminal: no deja opciones pendientes.`
+      ? `${variables} Un único mensaje: elegí su presentación en el campo Tipo.`
       : `${variables} Acciones disponibles: ${policy.actions.join(", ") || "ninguna"}.`;
+    addNodeActions.hidden = policy.terminal_only;
     addNodeActions.querySelectorAll("[data-add-node]").forEach((button) => {
-      button.disabled = policy.terminal_only && button.dataset.addNode !== "text";
+      button.disabled = policy.terminal_only || !allowedNodeTypes().includes(button.dataset.addNode);
     });
   }
 
   function nodeKindLabel(type) {
-    return { text: "Texto", reply_button: "Botones", list: "Lista" }[type] || type;
+    return { text: "Texto", reply_button: "Botones de respuesta", list: "Lista", url_button: "Botón de enlace" }[type] || type;
   }
 
   function uniqueNodeId(type) {
-    const prefix = type === "text" ? "mensaje" : type === "list" ? "lista" : "opciones";
+    const prefix = { text: "mensaje", list: "lista", url_button: "enlace" }[type] || "opciones";
     let counter = definition.nodes.length + 1;
     while (definition.nodes.some((node) => node.id === `${prefix}-${counter}`)) counter += 1;
     return `${prefix}-${counter}`;
@@ -162,10 +176,12 @@
   }
 
   function addNode(type) {
-    if (currentPolicy().terminal_only && type !== "text") return;
+    if (currentPolicy().terminal_only || !allowedNodeTypes().includes(type)) return;
     const id = uniqueNodeId(type);
     if (type === "text") {
       definition.nodes.push({ id, type, body: "", terminal: true });
+    } else if (type === "url_button") {
+      definition.nodes.push({ id, type, body: "", terminal: true, ...defaultURLButton() });
     } else if (type === "reply_button") {
       definition.nodes.push({ id, type, body: "", terminal: false, options: [defaultOption()] });
     } else {
@@ -206,9 +222,19 @@
   }
 
   function changeNodeType(index, type) {
+    if (!allowedNodeTypes().includes(type)) return;
     const old = definition.nodes[index];
     const base = { id: old.id, type, body: old.body || "" };
     if (type === "text") definition.nodes[index] = { ...base, terminal: true };
+    if (type === "url_button") {
+      definition.nodes[index] = {
+        ...base, terminal: true, ...defaultURLButton(),
+        ...(old.url_button_label ? { url_button_label: old.url_button_label } : {}),
+      };
+    }
+    if (type === "text" && currentPolicy().url_button && old.url_button_label) {
+      definition.nodes[index].url_button_label = old.url_button_label;
+    }
     if (type === "reply_button") definition.nodes[index] = { ...base, terminal: false, options: [defaultOption()] };
     if (type === "list") {
       definition.nodes[index] = {
@@ -380,19 +406,42 @@
     header.append(title, remove);
 
     const content = element("div", "flow-node-content");
-    const allowedNodeTypes = currentPolicy().terminal_only ? ["text"] : contract.node_types;
+    const policy = currentPolicy();
+    const hasURLButton = node.type === "url_button" || (node.type === "text" && policy.url_button);
     content.append(
       field("ID del mensaje", input(node.id, 100, (value) => changeNodeId(node, value))),
       field("Tipo", select(
-        allowedNodeTypes.map((type) => ({ value: type, label: nodeKindLabel(type) })),
+        allowedNodeTypes().map((type) => ({ value: type, label: nodeKindLabel(type) })),
         node.type,
         (value) => changeNodeType(index, value),
       )),
-      field("Contenido", textarea(node.body, node.type === "text" ? 4096 : 1024, (value) => { node.body = value; }), "flow-field-body"),
+      field("Contenido", textarea(node.body, node.type === "text" && !hasURLButton ? 4096 : 1024, (value) => { node.body = value; }), "flow-field-body"),
     );
     renderVariables(content);
 
-    if (node.type !== "text") {
+    if (hasURLButton) {
+      content.append(field("Texto del botón", input(
+        node.url_button_label ?? policy.url_button?.default_label ?? "",
+        20,
+        (value) => { node.url_button_label = value; },
+        "Completar registro",
+      )));
+      const fixedVariable = policy.url_button?.url_variable;
+      const destination = input(
+        fixedVariable ? `{${fixedVariable}}` : node.url,
+        2048,
+        (value) => { node.url = value; },
+        "https://ejemplo.com",
+      );
+      destination.readOnly = Boolean(fixedVariable);
+      content.append(field("Enlace del botón", destination));
+      const variables = (policy.url_variables || []).map((value) => `{${value}}`).join(", ");
+      content.append(element("div", "flow-variable-help", fixedVariable
+        ? "El destino se genera automáticamente. Escribí el contenido sin la variable del enlace para mostrarlo sólo en el botón."
+        : `Usá una URL completa con http:// o https://${variables ? `, o una variable: ${variables}` : ""}. Quitá el enlace del contenido para mostrarlo sólo en el botón. Al tocarlo se abre la página; no envía una respuesta al chat.`));
+    }
+
+    if (["reply_button", "list"].includes(node.type)) {
       content.append(
         field("Encabezado opcional", input(node.header || "", 60, (value) => {
           if (value) node.header = value;
