@@ -123,13 +123,15 @@
     contract.events.forEach((event) => {
       const option = document.createElement("option");
       option.value = event.event_key;
-      option.textContent = event.event_key;
+      option.textContent = event.label || event.event_key;
       eventSelect.append(option);
     });
     eventSelect.value = flow?.event_key || contract.events[0]?.event_key || "";
     eventSelect.addEventListener("change", () => {
       const policy = currentPolicy();
-      if (policy.terminal_only) {
+      if (policy.default_definition) {
+        definition = structuredClone(policy.default_definition);
+      } else if (policy.terminal_only) {
         definition = {
           start_node: "mensaje-inicial",
           nodes: [{ id: "mensaje-inicial", type: "text", body: "", terminal: true }],
