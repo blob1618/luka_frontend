@@ -70,13 +70,15 @@
       </div>
       <div class="flow-map-legend">
         <span><i class="flow-map-dot-message"></i>Mensaje</span>
+        <span><i class="flow-map-dot-user"></i>Respuesta del usuario</span>
+        <span><i class="flow-map-dot-subflow"></i>Subflujo compartido</span>
         <span><i class="flow-map-dot-action"></i>Acción del backend</span>
         <span><i class="flow-map-dot-warning"></i>Revisar conexión</span>
         <span id="flow-map-source">{{ 'Borrador actual' if flow and flow.draft else 'Versión publicada · los cambios se ven aquí' if flow else 'Nuevo borrador' }}</span>
       </div>
       <div id="flow-map" class="flow-map" tabindex="0" role="region" aria-label="Mapa de mensajes y acciones. Desplazate para explorar el recorrido."></div>
       <p id="flow-map-summary" class="flow-map-summary" role="status"></p>
-      <p class="flow-map-note">Las flechas siguen las opciones configuradas. Las acciones terminan este recorrido y devuelven el control a Luka. Usá Validar antes de publicar.</p>
+      <p class="flow-map-note">Las flechas muestran qué puede responder el usuario y qué sucede después. Luka valida los datos antes de guardar. Tocá una tarjeta para editar el mensaje o el ejemplo de respuesta.</p>
     </section>
 
     <section class="flow-panel">

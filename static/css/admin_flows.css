@@ -265,3 +265,21 @@
   .flow-editor-actions-left, .flow-editor-actions-right { flex-direction: column; }
   .flow-editor-actions .flow-button { width: 100%; }
 }
+
+/* User input is visually distinct from Luka's outgoing messages. */
+.flow-user-responses { grid-column: 1 / -1; border-top: 1px solid #327d69; padding-top: 20px; display: grid; gap: 12px; }
+.flow-user-responses h3 { color: #6ee7b7; font-size: 1rem; }
+.flow-response-outcomes { color: #94a3b8; font-size: .75rem; line-height: 1.6; }
+.flow-map-dot-user { background: #6ee7b7; }
+
+[hidden] { display: none !important; }
+.flow-map-journey { max-height: 680px; min-height: 500px; }
+.flow-map-user { background: #10322d; border-color: #327d69; }
+.flow-map-user .flow-map-badges { color: #6ee7b7; }
+.flow-map-user .flow-map-option { border-color: #275648; color: #b5e8d7; }
+
+.flow-map-subflow { border: 2px dashed #fbbf24; background: #302818; }
+.flow-map-subflow .flow-map-badges { color: #fbbf24; }
+
+.flow-map-exit { display: block; padding: 6px 0; font-size: 11px; color: #94a3b8; }
+.flow-map-dot-subflow { background: #fbbf24; }

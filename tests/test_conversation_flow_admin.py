@@ -272,3 +272,26 @@ async def test_backend_client_requires_complete_server_configuration(monkeypatch
 
     with pytest.raises(FlowAdminConfigurationError):
         await ConversationFlowAdminClient().list()
+
+
+def test_subflow_link_opens_existing_active_editor(client, monkeypatch):
+    flow = {**flow_payload(), 'event_key': 'category.confirmation_required'}
+    monkeypatch.setattr(flow_admin_client, 'list', AsyncMock(return_value=[flow]))
+    response = client.get('/admin/flujos/evento/category.confirmation_required', follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers['location'] == f"/admin/flujos/{flow['id']}"
+
+
+def test_missing_subflow_opens_creation_with_selected_event(client, monkeypatch):
+    monkeypatch.setattr(flow_admin_client, 'list', AsyncMock(return_value=[]))
+    response = client.get('/admin/flujos/evento/category.confirmation_required', follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers['location'] == '/admin/flujos/nuevo?event=category.confirmation_required'
+
+
+def test_subflow_link_requires_admin(client, monkeypatch):
+    app.dependency_overrides[get_current_user] = lambda: 'not-an-admin'
+    read = AsyncMock(return_value=[])
+    monkeypatch.setattr(flow_admin_client, 'list', read)
+    assert client.get('/admin/flujos/evento/category.confirmation_required').status_code == 403
+    read.assert_not_awaited()

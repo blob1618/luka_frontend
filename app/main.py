@@ -891,6 +891,22 @@ async def archive_conversation_flow_proxy(
         return _flow_admin_error_response(exc)
 
 
+@app.get("/admin/flujos/evento/{event_key}")
+async def open_flow_by_event(
+    event_key: str,
+    _auth_user_id: str = Depends(require_flow_admin_user),
+):
+    from urllib.parse import quote
+
+    try:
+        flows = await flow_admin_client.list()
+    except (FlowAdminAPIError, FlowAdminConfigurationError) as exc:
+        return _flow_admin_error_response(exc)
+    flow = next((f for f in flows if f["event_key"] == event_key and f["status"] != "archived"), None)
+    target = f"/admin/flujos/{flow['id']}" if flow else f"/admin/flujos/nuevo?event={quote(event_key, safe='')}"
+    return RedirectResponse(target, status_code=303)
+
+
 @app.get("/admin/flujos/{flow_id}", response_class=HTMLResponse)
 async def edit_conversation_flow(
     flow_id: str,

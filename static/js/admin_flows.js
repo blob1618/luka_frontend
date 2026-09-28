@@ -22,19 +22,23 @@
   let slugTouched = Boolean(flow);
   const graphSource = document.getElementById("flow-map-source");
   const initialGraphSource = graphSource.textContent;
-  const graph = new window.LukaFlowGraph(document.getElementById("flow-map"), (index) => {
+  const graph = new window.LukaFlowGraph(document.getElementById("flow-map"), (index, responseId, externalEvent) => {
+    if (externalEvent) {
+      window.location.assign(`/admin/flujos/evento/${encodeURIComponent(externalEvent)}`);
+      return;
+    }
     const target = nodesRoot.children[index];
     if (!target) return;
     nodesRoot.querySelectorAll(".flow-node-selected").forEach((node) => node.classList.remove("flow-node-selected"));
     target.classList.add("flow-node-selected");
     target.scrollIntoView({ behavior: "smooth", block: "center" });
-    target.querySelector("textarea")?.focus({ preventScroll: true });
+    (responseId ? target.querySelector(`[data-response-id="${responseId}"]`) : target.querySelector("textarea"))?.focus({ preventScroll: true });
   });
   let graphFrame;
   function updateGraph() {
     cancelAnimationFrame(graphFrame);
     graphFrame = requestAnimationFrame(() => {
-      graph.update(definition);
+      graph.update(definition, currentPolicy());
       graphSource.textContent = JSON.stringify(definition) === JSON.stringify(initialDefinition)
         ? initialGraphSource : "Cambios locales · guardá el borrador";
     });
@@ -87,9 +91,11 @@
     variables: [], actions: [], terminal_only: false,
   };
 
-  const allowedNodeTypes = () => contract.node_types.filter((type) =>
+  const eventFor = (node) => Object.entries(definition.event_nodes || {}).find(([, id]) => id === node?.id)?.[0];
+  const policyFor = (node) => events.get(eventFor(node)) || currentPolicy();
+  const allowedNodeTypes = (node) => contract.node_types.filter((type) =>
     ["text", "reply_button", "list", "url_button"].includes(type)
-      && (!currentPolicy().terminal_only || ["text", "url_button"].includes(type)));
+      && (!policyFor(node).terminal_only || ["text", "url_button"].includes(type)));
 
   function defaultURLButton() {
     const policy = currentPolicy();
@@ -126,12 +132,14 @@
       option.textContent = event.label || event.event_key;
       eventSelect.append(option);
     });
-    eventSelect.value = flow?.event_key || contract.events[0]?.event_key || "";
+    const requestedEvent = new URLSearchParams(window.location.search).get("event");
+    eventSelect.value = flow?.event_key || (events.has(requestedEvent) ? requestedEvent : contract.events[0]?.event_key) || "";
+    if (!flow && currentPolicy().default_definition) definition = structuredClone(currentPolicy().default_definition);
     eventSelect.addEventListener("change", () => {
       const policy = currentPolicy();
       if (policy.default_definition) {
         definition = structuredClone(policy.default_definition);
-      } else if (policy.terminal_only) {
+      } else if (definition.event_nodes || policy.terminal_only) {
         definition = {
           start_node: "mensaje-inicial",
           nodes: [{ id: "mensaje-inicial", type: "text", body: "", terminal: true }],
@@ -149,7 +157,10 @@
     eventHelp.textContent = policy.terminal_only
       ? `${variables} Un único mensaje: elegí su presentación en el campo Tipo.`
       : `${variables} Acciones disponibles: ${policy.actions.join(", ") || "ninguna"}.`;
-    addNodeActions.hidden = policy.terminal_only;
+    if (policy.used_by) eventHelp.textContent = `Subflujo compartido por: ${policy.used_by.join(" y ")}. Al terminar, continúa la operación que lo llamó.`;
+    if (policy.stages) eventHelp.textContent = "Un solo recorrido: mensajes, respuestas del usuario y resultados. Se guarda y publica completo.";
+    startSelect.closest("label").hidden = Boolean(policy.stages);
+    addNodeActions.hidden = policy.terminal_only || Boolean(policy.stages);
     addNodeActions.querySelectorAll("[data-add-node]").forEach((button) => {
       button.disabled = policy.terminal_only || !allowedNodeTypes().includes(button.dataset.addNode);
     });
@@ -166,8 +177,9 @@
     return `${prefix}-${counter}`;
   }
 
-  function defaultOption(index = 1) {
-    const actions = currentPolicy().actions;
+  function defaultOption(index = 1, node) {
+    const actions = policyFor(node).actions;
+    if (definition.event_nodes && actions.length) return { id: `${node.id}-opcion-${index}`, title: `Opción ${index}`, action: actions[0] };
     if (definition.nodes.length > 1) {
       return { id: `opcion-${index}`, title: `Opción ${index}`, next_node: definition.nodes[0].id };
     }
@@ -210,6 +222,9 @@
     const previousId = node.id;
     node.id = nextId;
     if (definition.start_node === previousId) definition.start_node = nextId;
+    Object.keys(definition.event_nodes || {}).forEach((event) => {
+      if (definition.event_nodes[event] === previousId) definition.event_nodes[event] = nextId;
+    });
     definition.nodes.forEach((candidate) => {
       const options = candidate.type === "reply_button"
         ? candidate.options
@@ -224,7 +239,7 @@
   }
 
   function changeNodeType(index, type) {
-    if (!allowedNodeTypes().includes(type)) return;
+    if (!allowedNodeTypes(definition.nodes[index]).includes(type)) return;
     const old = definition.nodes[index];
     const base = { id: old.id, type, body: old.body || "" };
     if (type === "text") definition.nodes[index] = { ...base, terminal: true };
@@ -237,11 +252,11 @@
     if (type === "text" && currentPolicy().url_button && old.url_button_label) {
       definition.nodes[index].url_button_label = old.url_button_label;
     }
-    if (type === "reply_button") definition.nodes[index] = { ...base, terminal: false, options: [defaultOption()] };
+    if (type === "reply_button") definition.nodes[index] = { ...base, terminal: false, options: [defaultOption(1, old)] };
     if (type === "list") {
       definition.nodes[index] = {
         ...base, button: "Ver opciones", terminal: false,
-        sections: [{ title: "Opciones", options: [defaultOption()] }],
+        sections: [{ title: "Opciones", options: [defaultOption(1, old)] }],
       };
     }
     render();
@@ -258,8 +273,8 @@
     startSelect.value = definition.start_node;
   }
 
-  function renderVariables(container) {
-    const variables = currentPolicy().variables;
+  function renderVariables(container, node) {
+    const variables = policyFor(node).variables;
     const help = element("div", "flow-variable-help");
     help.textContent = variables.length
       ? `Podés insertar: ${variables.map((value) => `{${value}}`).join(" · ")}`
@@ -267,17 +282,17 @@
     container.append(help);
   }
 
-  function normalizeTarget(option, mode) {
+  function normalizeTarget(option, mode, node) {
     if (mode === "action") {
       delete option.next_node;
-      option.action = currentPolicy().actions[0] || "";
+      option.action = policyFor(node).actions[0] || "";
     } else {
       delete option.action;
       option.next_node = definition.nodes[0]?.id || "";
     }
   }
 
-  function renderOption(option, onRemove, allowDescription = false) {
+  function renderOption(option, onRemove, allowDescription = false, node) {
     const wrapper = element("div", "flow-option");
     const grid = element("div", "flow-option-grid");
     grid.append(
@@ -285,12 +300,12 @@
       field("Texto visible", input(option.title, allowDescription ? 24 : 20, (value) => { option.title = value; })),
     );
 
-    const policy = currentPolicy();
-    const targetModes = [{ value: "next", label: "Siguiente mensaje" }];
+    const policy = policyFor(node);
+    const targetModes = definition.event_nodes ? [] : [{ value: "next", label: "Siguiente mensaje" }];
     if (policy.actions.length) targetModes.push({ value: "action", label: "Acción permitida" });
     const mode = option.action ? "action" : "next";
     const modeSelect = select(targetModes, mode, (value) => {
-      normalizeTarget(option, value);
+      normalizeTarget(option, value, node);
       render();
     });
     grid.append(field("Destino", modeSelect));
@@ -330,7 +345,7 @@
     add.type = "button";
     add.disabled = node.options.length >= 3;
     add.addEventListener("click", () => {
-      node.options.push(defaultOption(node.options.length + 1));
+      node.options.push(defaultOption(node.options.length + 1, node));
       render();
     });
     header.append(add);
@@ -339,7 +354,7 @@
       options.append(renderOption(option, () => {
         node.options.splice(index, 1);
         render();
-      }));
+      }, false, node));
     });
     container.append(options);
   }
@@ -352,7 +367,7 @@
     addSection.type = "button";
     addSection.disabled = node.sections.length >= 10;
     addSection.addEventListener("click", () => {
-      node.sections.push({ title: `Sección ${node.sections.length + 1}`, options: [defaultOption()] });
+      node.sections.push({ title: `Sección ${node.sections.length + 1}`, options: [defaultOption(1, node)] });
       render();
     });
     header.append(addSection);
@@ -371,7 +386,7 @@
       const rowCount = node.sections.reduce((count, current) => count + current.options.length, 0);
       addRow.disabled = rowCount >= 10;
       addRow.addEventListener("click", () => {
-        section.options.push(defaultOption(rowCount + 1));
+        section.options.push(defaultOption(rowCount + 1, node));
         render();
       });
       const removeSection = element("button", "flow-icon-button", "Eliminar sección");
@@ -387,7 +402,7 @@
         sectionRoot.append(renderOption(option, () => {
           section.options.splice(optionIndex, 1);
           render();
-        }, true));
+        }, true, node));
       });
       options.append(sectionRoot);
     });
@@ -400,26 +415,27 @@
     const title = element("div", "flow-node-title");
     title.append(
       element("span", "flow-node-kind", nodeKindLabel(node.type)),
-      element("strong", "", node.id || "Mensaje sin ID"),
+      element("strong", "", currentPolicy().stages?.[eventFor(node)] || node.id || "Mensaje sin ID"),
     );
     const remove = element("button", "flow-icon-button", "Eliminar mensaje");
     remove.type = "button";
     remove.addEventListener("click", () => removeNode(index));
-    header.append(title, remove);
+    header.append(title);
+    if (!definition.event_nodes) header.append(remove);
 
     const content = element("div", "flow-node-content");
-    const policy = currentPolicy();
+    const policy = policyFor(node);
     const hasURLButton = node.type === "url_button" || (node.type === "text" && policy.url_button);
     content.append(
       field("ID del mensaje", input(node.id, 100, (value) => changeNodeId(node, value))),
       field("Tipo", select(
-        allowedNodeTypes().map((type) => ({ value: type, label: nodeKindLabel(type) })),
+        allowedNodeTypes(node).map((type) => ({ value: type, label: nodeKindLabel(type) })),
         node.type,
         (value) => changeNodeType(index, value),
       )),
       field("Contenido", textarea(node.body, node.type === "text" && !hasURLButton ? 4096 : 1024, (value) => { node.body = value; }), "flow-field-body"),
     );
-    renderVariables(content);
+    renderVariables(content, node);
 
     if (hasURLButton) {
       content.append(field("Texto del botón", input(
@@ -459,6 +475,23 @@
     if (node.type === "list") {
       content.append(field("Texto del botón", input(node.button, 20, (value) => { node.button = value; })));
       renderListSections(node, content);
+    }
+    const responses = currentPolicy().text_responses?.[eventFor(node)] || [];
+    if (responses.length) {
+      const section = element("div", "flow-user-responses");
+      section.append(element("h3", "", "Respuestas posibles del usuario"));
+      section.append(element("p", "flow-variable-help", "Los ejemplos ayudan a visualizar la conversación. Luka interpreta el texto; no exige que coincida literalmente."));
+      responses.forEach((response) => {
+        const control = input(definition.response_examples?.[response.id] || response.example, 240, (value) => {
+          definition.response_examples ||= {};
+          if (value.trim()) definition.response_examples[response.id] = value;
+          else delete definition.response_examples[response.id];
+        });
+        control.dataset.responseId = response.id;
+        section.append(field(response.label, control));
+        section.append(element("p", "flow-response-outcomes", response.outcomes.map((o) => `${o.label} → ${(currentPolicy().stages[o.event] || currentPolicy().subflows?.[o.event]?.label || o.event)}`).join(" · ")));
+      });
+      content.append(section);
     }
     root.append(header, content);
     return root;
