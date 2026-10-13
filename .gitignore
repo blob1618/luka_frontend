@@ -8,6 +8,8 @@ __pycache__/
 *.sqlite
 .DS_Store
 
+docs/estado-y-roadmap-luka.md
+
 .vscode/
 .agents/
 .pytest_cache/
